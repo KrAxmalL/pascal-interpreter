@@ -113,8 +113,8 @@ startingAnalyzer = A {
      parentScope = Nothing
     }
 
-applyAnalyzer :: Program -> Either AnalysisError Program
-applyAnalyzer p = fmap (const p) (analyzeProgram startingAnalyzer p)
+applyAnalyzer :: Program -> Either AnalysisError Analyzer
+applyAnalyzer p = analyzeProgram startingAnalyzer p
 
 analyzeProgram :: Analyzer -> Program -> Either AnalysisError Analyzer
 analyzeProgram a Program {pHeader, pBody} = analyzeBlock (Right a) pBody
@@ -125,6 +125,7 @@ analyzeBlock a@(Right _) Block {bDeclarations, bBody} = do
     a' <- foldl analyzeDeclaration a bDeclarations
     analyzeStatement (Right a') bBody
 
+-- TODO: return analyzer currentScope to parent scope when finished analyzing function or procedure body
 analyzeDeclaration :: Either AnalysisError Analyzer -> Declaration -> Either AnalysisError Analyzer
 analyzeDeclaration a@(Left _) _ = a
 analyzeDeclaration a@(Right _) (VarDecl vars) = foldl analyzeVar a vars
@@ -147,7 +148,7 @@ analyzeDeclaration (Right a) (FuncDecl fn) = case (findInScope (currentScope a) 
                                            updatedNewScope = newScope {variables = ST ((fnName, VI {viName = fnName, viType = typeInfo}) : stTable (variables newScope))} -- 2.1 Add variable with function name (used to return values)
                                        in case (analyzeFormalParamList updatedNewScope (fParams fn)) of -- 3. Verify function parameters have unique names and valid types
                                             Left er -> Left er
-                                            Right analyzedNewScope -> let updatedParentScope = currScope {functions = ST ((fnName, FI { fiName = fnName, fiParams = map (\p -> PAI {paiName = (idValue (fpName p)), paiType = getRight (getType currScope (idValue (fpType p)))}) (fParams fn) , fiResType = typeInfo}) : (stTable (functions currScope)))}
+                                            Right analyzedNewScope -> let updatedParentScope = currScope {functions = ST ((fnName, FI { fiName = fnName, fiParams = map (\p -> PAI {paiName = (idValue (fpName p)), paiType = getRight (getType currScope (idValue (fpType p)))}) (fParams fn), fiResType = typeInfo}) : (stTable (functions currScope)))}
                                                                           finalNewScope = analyzedNewScope {parentScope = Just updatedParentScope}
                                                                           updatedAnalyzer = Right a {globalScope = if (isGlobalScope updatedParentScope) then updatedParentScope else (globalScope a), currentScope = finalNewScope}
                                                                       in analyzeBlock updatedAnalyzer (fBlock fn)
@@ -178,14 +179,19 @@ analyzeFormalParam sc p = case sc of
             where paramName = idValue (fpName p)
                   paramType = idValue (fpType p)
 
+-- TODO: add exhaustive error handling (remove duplicated Left er -> Left er)
+-- TODO: consider adding new error types
 analyzeStatement :: Either AnalysisError Analyzer -> Statement -> Either AnalysisError Analyzer
 analyzeStatement a@(Left _) _ = a
 analyzeStatement ea@(Right a) Assignment {aName, aValue} = case getVar (currentScope a) (idValue aName) of
     Left (VariableDoesNotExistError m) -> Left (VariableDoesNotExistError ("Error during assignment statement! " ++ m))
+    Left er -> Left er
     Right vi -> case analyzeExpression ea aValue of
         Left (TypeMismatchError m) -> Left (TypeMismatchError ("Wrong expression in assignment statement! " ++ m))
+        Left er -> Left er
         Right ti -> case expectType aValue (viType vi) ti of
             Left (TypeMismatchError m) -> Left (TypeMismatchError ("Wrong expression type in assignment statement! " ++ m))
+            Left er -> Left er
             Right _ -> Right a
 analyzeStatement (Right a) ProcCall {pcName, pcParams} = do
     pri <- getProc (currentScope a) (idValue pcName)
@@ -193,9 +199,15 @@ analyzeStatement (Right a) ProcCall {pcName, pcParams} = do
 analyzeStatement a@(Right _) (Compound sttms) = foldl analyzeStatement a sttms
 analyzeStatement a@(Right _) If {iCondition, iIfRoute, iElseRoute} = case (analyzeExpression a iCondition) of
     Left (TypeMismatchError m) -> Left (TypeMismatchError ("Error in expression in 'if' statement! " ++ m))
+    Left er -> Left er
     Right ti -> case expectType iCondition booleanTypeInfo ti of
         Left (TypeMismatchError m) -> Left (TypeMismatchError ("Wrong expression type in 'if' statement! " ++ m))
-        Right _ -> analyzeStatement a wBody
+        Left er -> Left er
+        Right _ -> case analyzeStatement a iIfRoute of
+            Left er -> Left er
+            ea@(Right _) -> case iElseRoute of
+                Nothing -> ea
+                Just elseSttm -> analyzeStatement ea elseSttm
 analyzeStatement a@(Right _) While {wCondition, wBody} = case (analyzeExpression a wCondition) of
     Left (TypeMismatchError m) -> Left (TypeMismatchError ("Error in expression in 'while' statement! " ++ m))
     Right ti -> case expectType wCondition booleanTypeInfo ti of
@@ -207,7 +219,6 @@ analyzeExpression a@(Left er) _ = Left er
 analyzeExpression a@(Right _) (Val val) = case val of
     IntNum _ -> Right integerTypeInfo
     Boolean _ -> Right booleanTypeInfo
-    _ -> error "unreachable"
 analyzeExpression (Right a) (VarRef iden) = fmap viType (getVar (currentScope a) (idValue iden))
 analyzeExpression (Right a) (FuncCall {fcName, fcParams}) = do
     fi <- getFunc (currentScope a) (idValue fcName)
@@ -293,9 +304,6 @@ getRight :: Either a b -> b
 getRight (Right v) = v
 getRight _ = error "Either doesn't have Right value"
 
-
-
-
 testIntNumExpr :: Expression
 testIntNumExpr = Val (IntNum 42)
 
@@ -329,6 +337,13 @@ testSttmProcCall :: Statement
 testSttmProcCall = ProcCall {pcName = Identifier {idValue = "pr"}, pcParams =[
     Val (IntNum 42)
 ]}
+
+testSttmIf :: Statement
+testSttmIf = If { 
+    iCondition = Val (Boolean True), 
+    iIfRoute = Assignment {aName = Identifier {idValue = "a"}, aValue = Val (IntNum 42) }, 
+    iElseRoute = Just Assignment {aName = Identifier {idValue = "a"}, aValue = Val (IntNum 84) } 
+}
 
 testSttmWhile :: Statement
 testSttmWhile = While { wCondition = Val (IntNum 42), wBody = Compound []}

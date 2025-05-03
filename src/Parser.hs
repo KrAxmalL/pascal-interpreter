@@ -7,12 +7,12 @@ reservedKeywords :: [String]
 reservedKeywords = []
 
 applyParser :: String -> String -> Either ParseError Program
-applyParser source content = parse programP source trimmedContent
-  where trimmedContent = dropWhile (\ch -> ch == '\n' || ch == '\t' || ch == ' ') content
+applyParser = parse programP
 
 -- https://www.freepascal.org/docs-html/current/ref/refse111.html#x232-25600016.1
 programP :: Parser Program
 programP = do
+  _ <- anySpacesP
   name <- headerP
   block <- blockP
   _ <- lexemeP (char '.')
@@ -231,8 +231,8 @@ factorP = do
           unsignedConstantP <|>
           varRefOrFuncCallP
   return (expr)
-  where parenExpressionP = do 
-          expr <- parenthesisP expressionP 
+  where parenExpressionP = do
+          expr <- parenthesisP expressionP
           return (Paren expr)
         notFactorP = do
           _ <- try (lexeme1P (string "not"))

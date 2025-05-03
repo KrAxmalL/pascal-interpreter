@@ -2,6 +2,7 @@ module Main (main) where
 
 import System.IO
 import Parser
+import Analyzer
 
 fileName :: String
 fileName = "./sources/program.pas"
@@ -19,7 +20,13 @@ parseProgram :: IO ()
 parseProgram = do
     handle <- openFile fileName ReadMode
     contents <- hGetContents handle
-    putStrLn (show (applyParser fileName contents))
+    case applyParser fileName contents of
+        Left er -> putStrLn (show er)
+        Right pr -> do
+            putStrLn (show pr)
+            case applyAnalyzer pr of
+                Left er -> putStrLn (show er)
+                Right a -> putStrLn (show a)
     hClose handle
 
 tokenize :: String -> [String]

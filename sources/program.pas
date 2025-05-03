@@ -2,6 +2,7 @@ program HelloWorld;
 
 var a: Integer;
 var b: Boolean;
+var e: Integer;
 
 function add(c: Integer, d: Integer): Integer;
 begin
@@ -10,16 +11,15 @@ end;
 
 procedure print(message: Integer);
 begin
-   writeln(c);
+   
 end;
 
 begin
    if e > 5 then
       begin
-         m := (add(n, c) > 5) = (4 / z - - x);
-         add (add(s, l));
-         f := true;
+         b := (add(a, e) > 5) = (4 / a <> e);
+         print(add(a, e));
       end
    else
-      print();
+      print(1);
 end.
