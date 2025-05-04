@@ -15,6 +15,7 @@ begin
 end;
 
 begin
+a := add(-(1 + true), 4 + true);
    if e > 5 then
       begin
          b := (add(a, e) > 5) = (4 / a <> e);

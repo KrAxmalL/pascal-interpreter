@@ -25,7 +25,7 @@ parseProgram = do
         Right pr -> do
             putStrLn (show pr)
             case applyAnalyzer pr of
-                Left er -> putStrLn (show er)
+                Left er -> putStrLn (printAnalysisError er)
                 Right a -> putStrLn (show a)
     hClose handle
 
