@@ -3,6 +3,7 @@ module Main (main) where
 import System.IO
 import Parser
 import Analyzer
+import Interpreter
 
 fileName :: String
 fileName = "./sources/program.pas"
@@ -17,16 +18,28 @@ main = do
     hClose handle
 
 parseProgram :: IO ()
-parseProgram = do
-    handle <- openFile fileName ReadMode
+parseProgram = runInterpreter fileName
+
+runInterpreter :: String -> IO ()
+runInterpreter filePath = do
+    handle <- openFile filePath ReadMode
     contents <- hGetContents handle
-    case applyParser fileName contents of
+    putStrLn ("Parsing source file: '" ++ filePath ++ "'...")
+    case applyParser filePath contents of
         Left er -> putStrLn (show er)
         Right pr -> do
             putStrLn (show pr)
+            putStrLn (take 40 $ repeat '-')
+            putStrLn "Analyzing parsed program..."
             case applyAnalyzer pr of
                 Left er -> putStrLn (printAnalysisError er)
-                Right a -> putStrLn (show a)
+                Right a -> do
+                    putStrLn (show a)
+                    putStrLn (take 40 $ repeat '-')
+                    putStrLn "Interpreting program..."
+                    case applyInterpreter pr of
+                        Left er -> putStrLn (printInterpretationError er)
+                        Right i -> putStrLn (show i)
     hClose handle
 
 tokenize :: String -> [String]

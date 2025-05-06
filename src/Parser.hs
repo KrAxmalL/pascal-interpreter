@@ -1,5 +1,7 @@
 module Parser (applyParser) where
 
+import Control.Monad
+import Text.Parsec.Prim (ParsecT, getParserState)
 import Text.ParserCombinators.Parsec
 import Lexic
 
@@ -16,7 +18,8 @@ programP = do
   name <- headerP
   block <- blockP
   _ <- lexemeP (char '.')
-  return (Program {pHeader = name, pBody = block})
+  pos <- sourcePos
+  return (Program {pHeader = name, pBody = block, pPos = pos})
   where
     headerP = do
         _ <- lexemeP (string "program")
@@ -309,3 +312,6 @@ anySpace = space <|> newline <|> tab
 
 tParse :: Parser a -> String -> Either ParseError a
 tParse p = parse p "source"
+
+sourcePos :: Monad m => ParsecT s u m SourcePos
+sourcePos = statePos `liftM` getParserState

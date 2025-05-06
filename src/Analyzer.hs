@@ -146,7 +146,6 @@ analyzeBlock a@(Right _) Block {bDeclarations, bBody} = do
     a' <- foldl analyzeDeclaration a bDeclarations
     analyzeStatement (Right a') bBody
 
--- TODO: return analyzer currentScope to parent scope when finished analyzing function or procedure body
 analyzeDeclaration :: Either AnalysisError Analyzer -> Declaration -> Either AnalysisError Analyzer
 analyzeDeclaration a@(Left _) _ = a
 analyzeDeclaration a@(Right _) (VarDecl vars) = foldl analyzeVar a vars
@@ -204,7 +203,6 @@ analyzeFormalParam sc p = case sc of
             where paramName = idValue (fpName p)
                   paramType = idValue (fpType p)
 
--- TODO: consider adding new error types
 analyzeStatement :: Either AnalysisError Analyzer -> Statement -> Either AnalysisError Analyzer
 analyzeStatement a@(Left _) _ = a
 analyzeStatement ea@(Right a) Assignment {aName, aValue} = case getVar (currentScope a) (idValue aName) of

@@ -1,5 +1,6 @@
 module Lexic where
 
+import Text.Parsec (SourcePos)
 {-
 First support
   Blocks:
@@ -19,7 +20,7 @@ First support
 -}
 
 -- https://www.freepascal.org/docs-html/current/ref/refse111.html#x232-25600016.1
-data Program = Program { pHeader :: Identifier, pBody :: Block } deriving (Show)
+data Program = Program { pHeader :: Identifier, pBody :: Block, pPos :: SourcePos} deriving (Show)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse115.html#x236-26000016.5
 data Block = Block {bDeclarations :: [Declaration], bBody :: Statement} deriving (Show)
