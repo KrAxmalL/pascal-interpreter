@@ -5,8 +5,9 @@ import Text.Parsec.Prim (ParsecT, getParserState)
 import Text.ParserCombinators.Parsec
 import Lexic
 
+-- TODO: add more reserved keywords
 reservedKeywords :: [String]
-reservedKeywords = []
+reservedKeywords = ["program", "var", "function", "procedure", "begin", "end", "if", "then", "else", "while", "do", "div", "mod", "not", "and", "or", "xor", "true", "false"]
 
 applyParser :: String -> String -> Either ParseError Program
 applyParser = parse programP
@@ -24,7 +25,7 @@ programP = do
     headerP = do
         _ <- lexemeP (string "program")
         ident <- lexemeP identifierP
-        _ <- lexemeP (char ';')
+        _ <- lexemeP semicolonP
         return ident
 
 -- https://www.freepascal.org/docs-html/current/ref/refse115.html#x236-26000016.5
@@ -44,39 +45,39 @@ varDeclP :: Parser Declaration
 varDeclP = do
   _ <- lexeme1P (string "var")
   varName <- lexemeP identifierP
-  _ <- lexemeP (char ':')
+  _ <- lexemeP colonP
   typeName <- lexemeP identifierP
-  _ <- lexemeP (char ';')
+  _ <- lexemeP semicolonP
   return (VarDecl [Var {vName = varName, vType = typeName, vValue = Nothing}])
 
 funcDeclP :: Parser Declaration
 funcDeclP = do
   _ <- lexeme1P (string "function")
-  name <- lexemeP (identifierP)
+  name <- lexemeP identifierP
   formalParams <- parenthesisP formalParamListP
-  _ <- lexemeP (char ':')
+  _ <- lexemeP colonP
   returnType <- lexemeP identifierP
-  _ <- lexemeP (char ';')
+  _ <- lexemeP semicolonP
   block <- blockP
-  _ <- lexemeP (char ';')
+  _ <- lexemeP semicolonP
   return (FuncDecl Function {fName = name, fParams = formalParams, fResType = returnType, fBlock = block})
 
 procDeclP :: Parser Declaration
 procDeclP = do
   _ <- lexeme1P (string "procedure")
-  name <- lexemeP (identifierP)
+  name <- lexemeP identifierP
   formalParams <- parenthesisP formalParamListP
-  _ <- lexemeP (char ';')
+  _ <- lexemeP semicolonP
   block <- blockP
-  _ <- lexemeP (char ';')
+  _ <- lexemeP semicolonP
   return (ProcDecl Procedure {pName = name, pParams = formalParams, pBlock = block})
 
 formalParamListP :: Parser [FormalParam]
-formalParamListP = sepBy formalParamP (lexemeP (char ','))
+formalParamListP = sepBy formalParamP (lexemeP semicolonP)
   where
     formalParamP = do
       paramName <- lexemeP identifierP
-      _ <- lexemeP (char ':')
+      _ <- lexemeP colonP
       paramType <- lexemeP identifierP
       return (FormalParam {fpName = paramName, fpType = paramType} )
 
@@ -94,10 +95,10 @@ statementP :: Parser Statement
 statementP = try simpleStatementP <|> structuredStatementP
 
 simpleStatementP :: Parser Statement
-simpleStatementP = try assignmentP <|> procCallP
+simpleStatementP =  try assignmentP <|> procCallP
 
 structuredStatementP :: Parser Statement
-structuredStatementP = try compoundStatementP <|> conditionalStatementP <|> repetitiveStatementP
+structuredStatementP = compoundStatementP <|> conditionalStatementP <|> repetitiveStatementP
 
 conditionalStatementP :: Parser Statement
 conditionalStatementP = ifStatementP
@@ -121,13 +122,13 @@ procCallP = do
 compoundStatementP :: Parser Statement
 compoundStatementP = do
   _ <- lexeme1P (string "begin")
-  sttm <- endBy statementP (lexemeP (char ';'))
+  sttms <- endBy statementP (lexemeP semicolonP)
   _ <- lexemeP (string "end")
-  return (Compound sttm)
+  return (Compound sttms)
 
 ifStatementP :: Parser Statement
 ifStatementP = do
-  _ <- lexeme1P (string "if")
+  _ <- lexemeP (string "if")
   cond <- expressionP
   _ <- lexeme1P (string "then")
   ifSttm <- statementP
@@ -147,7 +148,7 @@ forStatementP = undefined
 
 whileStatementP :: Parser Statement
 whileStatementP = do
-  _ <- lexeme1P (string "while")
+  _ <- lexemeP (string "while")
   cond <- expressionP
   _ <- lexeme1P (string "do")
   sttm <- statementP
@@ -168,10 +169,6 @@ expressionP = chainl1 simpleExpressionP binOpC
            string "<"  <|>
            string "=")
       return (binOpConstructor $ binOp op)
--- expressionP = do
---   expr <- simpleExpressionP
---   return (expr)
-
 
 simpleExpressionP :: Parser Expression
 simpleExpressionP = chainl1 termP binOpC
@@ -183,9 +180,6 @@ simpleExpressionP = chainl1 termP binOpC
            try (string "or") <|>
            try (string "xor"))
       return (binOpConstructor $ binOp op)
--- simpleExpressionP = do
---   expr <- termP
---   return (expr)
 
 termP :: Parser Expression
 termP = chainl1 factorP binOpC
@@ -198,10 +192,6 @@ termP = chainl1 factorP binOpC
            try (string "mod") <|>
            try (string "and"))
       return (binOpConstructor $ binOp op)
--- termP = do
---   _ <- anySpacesP
---   expr <- factorP
---   return (expr)
 
 binOpConstructor :: BinaryOp -> Expression -> Expression -> Expression
 binOpConstructor op l r = BinOp {boOp = op, boLeft = l, boRight = r}
@@ -247,14 +237,14 @@ factorP = do
             return (UnOp (if sign == '+' then UnaryPlus else UnaryMinus) expr)
         varRefOrFuncCallP = do
           iden <- lexemeP identifierP
-          ch <- optionMaybe (char '(')
+          ch <- optionMaybe openParen
           (case ch of
              Just _ -> funcCallP iden
              _ -> return (VarRef iden))
           where
             funcCallP iden = do
               exprs <- paramListP
-              _ <- lexemeP (char ')')
+              _ <- lexemeP closeParen
               return (FuncCall {fcName = iden, fcParams = exprs})
         unsignedConstantP = do
           v <- valueP
@@ -277,17 +267,33 @@ valueP = unsignedNumberP <|> boolP
 -- https://www.freepascal.org/docs-html/current/ref/refse4.html#x15-140001.4
 identifierP :: Parser Identifier
 identifierP = do
-  bg <- letter <|> underscore
-  rest <- many (letter <|> digit <|> underscore)
-  return (Identifier (bg:rest))
-  where underscore = char '_'
-
+  bg <- letter <|> underscoreP
+  rest <- many (letter <|> digit <|> underscoreP)
+  keywordCheckP (bg:rest)
+  where underscoreP = char '_'
+        keywordCheckP iden = 
+          let identifier = Identifier {idValue =  iden}
+          in if (elem iden reservedKeywords) 
+             then unexpected iden 
+             else return (identifier)
 
 numberP :: Parser String
 numberP = many1 digit
 
+colonP :: Parser Char
+colonP = char ':'
+
+semicolonP :: Parser Char
+semicolonP = char ';'
+
+openParen :: Parser Char
+openParen = char '('
+
+closeParen :: Parser Char
+closeParen = char ')'
+
 parenthesisP :: Parser a -> Parser a
-parenthesisP = between (lexemeP (char '(')) (lexemeP (char ')'))
+parenthesisP = between (lexemeP openParen) (lexemeP closeParen)
 
 lexeme1P :: Parser a -> Parser a
 lexeme1P p = do

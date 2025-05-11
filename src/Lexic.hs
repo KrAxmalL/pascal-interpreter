@@ -1,23 +1,6 @@
 module Lexic where
 
 import Text.Parsec (SourcePos)
-{-
-First support
-  Blocks:
-    1. program block
-    2. main begin-end block
-  Types:
-    1. Integer
-    2. Boolean
-  Operators:
-    1. Assignment
-    2. +
-  Control Flow:
-    1. begin-end block
-    2. if-then-else
-    3. for loop
-    4. while-do loop
--}
 
 -- https://www.freepascal.org/docs-html/current/ref/refse111.html#x232-25600016.1
 data Program = Program { pHeader :: Identifier, pBody :: Block, pPos :: SourcePos} deriving (Show)
@@ -89,3 +72,9 @@ data Identifier = Identifier {idValue :: String}
 data Value = Boolean Bool |
              IntNum Int
              deriving (Show)
+
+-- TODO: 
+-- 1. Test and fix parsing issues (especially 'while' loops, 'if' statements)
+-- 2. Consider supporting  Real data type
+-- 3. Consider adding more control flow statements (repeat..., for...)
+-- 5. Add readln and writeln functions support

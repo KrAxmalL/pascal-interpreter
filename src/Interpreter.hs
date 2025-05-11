@@ -43,7 +43,7 @@ data ScopeRecord = SR {
 }
 
 instance Show ScopeRecord where
-    show sr = printf "SR { srName = %s, srLevel = %d, srType = %s, parameters = %s, srReturnType = %s, variables = %s, functions = %s, procedures = %s, srBody = %s, parentSR = %s" (srName sr) (srLevel sr) (show (srType sr)) (show (parameters sr)) (show (srReturnType sr)) (show (variables sr)) (show (functions sr)) (show (procedures sr)) (show (srBody sr)) ("parent")
+    show sr = printf "SR { srName = %s, srLevel = %d, srType = %s, parameters = %s, srReturnType = %s, variables = %s, functions = %s, procedures = %s, srBody = %s, parentSR = %s" (srName sr) (srLevel sr) (show (srType sr)) (show (parameters sr)) (show (srReturnType sr)) (show (variables sr)) (show (functions sr)) (show (procedures sr)) (show (srBody sr)) (show (fmap srName (parentSR sr)))
 
 isGlobalScopeRecord :: ScopeRecord -> Bool
 isGlobalScopeRecord sr = case parentSR sr of
@@ -71,10 +71,10 @@ findVarInCallStack varName callStack =
     in vi
 
 findVarAndLocationInCallStack :: String -> [ActivationRecord] -> (VarInfo, Int)
-findVarAndLocationInCallStack varName callStack = findVar varName (zip callStack [1..])
-    where findVar varName' ((h, pos):t) = case (Data.Map.Strict.lookup varName' (vars h)) of
-                                            Just v -> (v, pos)
-                                            Nothing -> findVar varName' t
+findVarAndLocationInCallStack varName callStack = findVar varName (zip callStack [0..])
+    where findVar varName' ars = case (Data.Map.Strict.lookup varName' (vars (fst (head ars)))) of
+                                            Just v -> (v, (snd (head ars)))
+                                            Nothing -> findVar varName' (tail ars)
 
 findFunctionSR :: String -> ScopeRecord -> ScopeRecord
 findFunctionSR fnName sr = 
@@ -86,15 +86,30 @@ findFunctionSR fnName sr =
         Just psr -> findFunctionSR fnName psr
         Nothing -> error "Function must exist"
 
+findProcedureSR :: String -> ScopeRecord -> ScopeRecord
+findProcedureSR prName sr = 
+    if prName == (srName sr) 
+    then sr
+    else case Data.Map.Strict.lookup prName (procedures sr) of
+    Just procedurePR -> procedurePR
+    Nothing -> case parentSR sr of
+        Just psr -> findProcedureSR prName psr
+        Nothing -> error "Function must exist"
+
 newAR :: ActivationRecord
 newAR = AR {arName = "Global", arType = RTProgram, arLevel = 1, vars = empty}
 
--- TODO: initialize first AR in call stack
 applyInterpreter :: Program -> Either InterpretationError Interpreter
 applyInterpreter p = interpretStatement (Right interpreter) programBody
     where sr = buildProgramScopeRecord p
           programBody = srBody sr
-          interpreter = I {callStack = [AR], currentSR = sr}
+          initialVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) empty (variables sr)
+          interpreter = I {callStack = [AR {
+                arName = srName sr,
+                arLevel = 1,
+                arType = RTProgram,
+                vars = initialVars
+            }], currentSR = sr}
 
 buildProgramScopeRecord :: Program -> ScopeRecord
 buildProgramScopeRecord Program {pHeader, pBody} = buildBlockScopeRecord (idValue pHeader) 1 RTProgram Nothing Nothing pBody
@@ -148,33 +163,41 @@ interpretStatement :: Either InterpretationError Interpreter -> Statement ->  Ei
 interpretStatement i@(Left _) _ = i
 interpretStatement (Right i) Assignment {aName, aValue} = case interpretExpression i aValue of
     Left er -> Left er
-    Right (i', v) -> Right (i {callStack = updateVarInCallStack (idValue aName) v (callStack i')})
-interpretStatement (Right i) ProcCall {pcName, pcParams} = undefined -- case getProc (currentScope a) procName of
--- interpretStatement _ _ = undefined
--- Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
--- Right pri -> case analyzeActualParams a (priParams pri) (pcParams) of
---     Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
---     Right a' -> Right a'
--- where procName = idValue pcName
-analyzeStatement i@(Right _) (Compound sttms) = foldl analyzeStatement i sttms
--- analyzeStatement a@(Right _) If {iCondition, iIfRoute, iElseRoute} = case (interpretExpression a iCondition) of
---     Left er -> Left (AnalysisError IfStatementError "Error in conditional expression in 'if' statement!" (Just er))
---     Right ti -> case expectType iCondition booleanTypeInfo ti of
---         Left er -> Left (AnalysisError IfStatementError "Wrong conditional expression type in 'if' statement!" (Just er))
---         Right _ -> case analyzeStatement a iIfRoute of
---             Left er -> Left (AnalysisError IfStatementError "Error in 'if' statement!" (Just er))
---             ea@(Right _) -> case iElseRoute of
---                 Nothing -> ea
---                 Just elseSttm -> case analyzeStatement ea elseSttm of
---                     Left er -> Left (AnalysisError IfStatementError "Error in 'if' statement!" (Just er))
---                     ea'@(Right _) -> ea'
--- analyzeStatement a@(Right _) While {wCondition, wBody} = case (interpretExpression a wCondition) of
---     Left er -> Left (AnalysisError WhileStatementError "Error in conditional expression in 'while' statement! "  (Just er))
---     Right ti -> case expectType wCondition booleanTypeInfo ti of
---         Left er -> Left (AnalysisError WhileStatementError "Wrong conditional expression type in 'while' statement!"  (Just er))
---         Right _ -> case analyzeStatement a wBody of
---             Left er -> Left (AnalysisError WhileStatementError "Error in 'while' statement!"  (Just er))
---             ea@(Right _) -> ea
+    Right (i', v) -> Right (i' {callStack = updateVarInCallStack (idValue aName) v (callStack i')})
+interpretStatement (Right i) ProcCall {pcName, pcParams} = case interpretParams i pcParams of
+    Left er -> Left er
+    Right (i', parameterValues) ->
+        let currSR = currentSR i'
+            procedureSR = findProcedureSR (idValue pcName) (currentSR i')
+            paramVars = buildParameterMap (fromJust (parameters procedureSR)) parameterValues
+            declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables procedureSR)
+            procedureAR = AR {
+                arName = (srName procedureSR),
+                arLevel = arLevel (head (callStack i')),
+                arType = srType procedureSR,
+                vars = declaredVars
+            }
+        in case interpretStatement (Right i' {currentSR = procedureSR, callStack = procedureAR : (callStack i')}) (srBody procedureSR) of
+            Left er -> Left er
+            Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')})
+interpretStatement i@(Right _) (Compound sttms) = foldl interpretStatement i sttms
+interpretStatement (Right i) If {iCondition, iIfRoute, iElseRoute} = case interpretExpression i iCondition of
+    Left er -> Left er
+    Right (i', v) -> case expectBooleanType v of
+        Left er -> Left er
+        Right (Boolean True) -> interpretStatement (Right i') iIfRoute
+        Right (Boolean False) -> case iElseRoute of
+                Just sttm -> interpretStatement (Right i') sttm
+                Nothing -> Right i'
+interpretStatement ie@(Right i) whileSttm@(While {wCondition, wBody}) =  case interpretExpression i wCondition of
+    Left er -> Left er
+    Right (i', v) -> case expectBooleanType v of
+        Left er -> Left er
+        Right (Boolean False) -> Right i'
+        Right (Boolean True) -> case interpretStatement (Right i') wBody of
+             Left er -> Left er
+             i''@(Right _) -> interpretStatement i'' whileSttm
+
 
 interpretExpression :: Interpreter -> Expression -> Either InterpretationError (Interpreter, Value)
 interpretExpression i (Val v) = Right (i, v)
@@ -268,19 +291,19 @@ interpretExpression i (FuncCall {fcName, fcParams}) = case interpretParams i fcP
     Right (i', parameterValues) ->
         let currSR = currentSR i'
             functionName = idValue fcName
-            functionSR = findFunctionSR (idValue fcName) (currentSR i)
+            functionSR = findFunctionSR (idValue fcName) (currentSR i')
             paramVars = buildParameterMap (fromJust (parameters functionSR)) parameterValues
-            -- TODO: add variables from declarations to finalVars
-            finalVars = insert functionName (VI {viName = functionName, viType = fromJust (srReturnType functionSR), viValue = Nothing}) paramVars
+            declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables functionSR)
+            finalVars = insert functionName (VI {viName = functionName, viType = fromJust (srReturnType functionSR), viValue = Nothing}) declaredVars
             functionAR = AR {
                 arName = (srName functionSR),
-                arLevel = arLevel (head (callStack i)),
+                arLevel = arLevel (head (callStack i')),
                 arType = srType functionSR,
                 vars = finalVars
             }
-        in case interpretStatement (Right i {currentSR = functionSR, callStack = functionAR : (callStack i')}) (srBody functionSR) of
+        in case interpretStatement (Right i' {currentSR = functionSR, callStack = functionAR : (callStack i')}) (srBody functionSR) of
             Left er -> Left er
-            Right i' -> Right (i' {currentSR = currSR, callStack = tail (callStack i')}, fromJust (viValue (findVarInCallStack functionName (callStack i'))))
+            Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')}, fromJust (viValue (findVarInCallStack functionName (callStack i''))))
 interpretExpression i (Paren expr) = interpretExpression i expr
 
 interpretParams :: Interpreter -> [Expression] -> Either InterpretationError (Interpreter, [Value])
@@ -312,5 +335,5 @@ expectType t v = case t of
     where typeError = Left (InterpretationError WrongTypeError ("Wrong value type! Expected type: '" ++ t ++ "'!") Nothing)
 
 getDefaultValue :: String -> Value
-getDefaultValue "integer" = IntNum 0
-getDefaultValue "boolean" = Boolean False
+getDefaultValue "Integer" = IntNum 0
+getDefaultValue "Boolean" = Boolean False
