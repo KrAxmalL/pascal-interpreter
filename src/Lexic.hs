@@ -73,8 +73,12 @@ data Value = Boolean Bool |
              IntNum Int
              deriving (Show)
 
+printValue :: Value -> String
+printValue (Boolean v) = show v
+printValue (IntNum v) = show v
+
 -- TODO: 
 -- 1. Test and fix parsing issues (especially 'while' loops, 'if' statements)
 -- 2. Consider supporting  Real data type
 -- 3. Consider adding more control flow statements (repeat..., for...)
--- 5. Add readln and writeln functions support
+-- 5. Add readln function support

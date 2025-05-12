@@ -94,13 +94,10 @@ findProcedureSR prName sr =
     Just procedurePR -> procedurePR
     Nothing -> case parentSR sr of
         Just psr -> findProcedureSR prName psr
-        Nothing -> error "Function must exist"
+        Nothing -> error "Procedure must exist"
 
-newAR :: ActivationRecord
-newAR = AR {arName = "Global", arType = RTProgram, arLevel = 1, vars = empty}
-
-applyInterpreter :: Program -> Either InterpretationError Interpreter
-applyInterpreter p = interpretStatement (Right interpreter) programBody
+applyInterpreter :: Program -> IO (Either InterpretationError Interpreter)
+applyInterpreter p = interpretStatement (pure (Right interpreter)) programBody
     where sr = buildProgramScopeRecord p
           programBody = srBody sr
           initialVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) empty (variables sr)
@@ -159,160 +156,197 @@ buildDeclarationScopeRecord sr (ProcDecl pr) =
         }
     in updatedSR
 
-interpretStatement :: Either InterpretationError Interpreter -> Statement ->  Either InterpretationError Interpreter
-interpretStatement i@(Left _) _ = i
-interpretStatement (Right i) Assignment {aName, aValue} = case interpretExpression i aValue of
-    Left er -> Left er
-    Right (i', v) -> Right (i' {callStack = updateVarInCallStack (idValue aName) v (callStack i')})
-interpretStatement (Right i) ProcCall {pcName, pcParams} = case interpretParams i pcParams of
-    Left er -> Left er
-    Right (i', parameterValues) ->
-        let currSR = currentSR i'
-            procedureSR = findProcedureSR (idValue pcName) (currentSR i')
-            paramVars = buildParameterMap (fromJust (parameters procedureSR)) parameterValues
-            declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables procedureSR)
-            procedureAR = AR {
-                arName = (srName procedureSR),
-                arLevel = arLevel (head (callStack i')),
-                arType = srType procedureSR,
-                vars = declaredVars
-            }
-        in case interpretStatement (Right i' {currentSR = procedureSR, callStack = procedureAR : (callStack i')}) (srBody procedureSR) of
-            Left er -> Left er
-            Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')})
-interpretStatement i@(Right _) (Compound sttms) = foldl interpretStatement i sttms
-interpretStatement (Right i) If {iCondition, iIfRoute, iElseRoute} = case interpretExpression i iCondition of
-    Left er -> Left er
-    Right (i', v) -> case expectBooleanType v of
-        Left er -> Left er
-        Right (Boolean True) -> interpretStatement (Right i') iIfRoute
-        Right (Boolean False) -> case iElseRoute of
-                Just sttm -> interpretStatement (Right i') sttm
-                Nothing -> Right i'
-interpretStatement ie@(Right i) whileSttm@(While {wCondition, wBody}) =  case interpretExpression i wCondition of
-    Left er -> Left er
-    Right (i', v) -> case expectBooleanType v of
-        Left er -> Left er
-        Right (Boolean False) -> Right i'
-        Right (Boolean True) -> case interpretStatement (Right i') wBody of
-             Left er -> Left er
-             i''@(Right _) -> interpretStatement i'' whileSttm
+interpretStatement :: IO (Either InterpretationError Interpreter) -> Statement -> IO (Either InterpretationError Interpreter)
+interpretStatement ioi sttm = do 
+    intr <- ioi
+    case (intr, sttm) of
+        (Left _, _) -> return intr
+        (Right i, Assignment {aName, aValue}) -> do
+            res <- interpretExpression i aValue
+            return (case res of
+                Left er -> Left er
+                Right (i', v) -> Right (i' {callStack = updateVarInCallStack (idValue aName) v (callStack i')}))
+        (Right i, ProcCall {pcName, pcParams}) -> do
+            res <- interpretParams i pcParams
+            case res of
+                Left er -> pure (Left er)
+                Right (i', parameterValues) ->
+                    if (idValue pcName) == "writeln"
+                    then do
+                        putStrLn (foldl1 (++) (map printValue parameterValues))
+                        return (Right (i'))
+                    else
+                        let currSR = currentSR i'
+                            procedureSR = findProcedureSR (idValue pcName) (currentSR i')
+                            paramVars = buildParameterMap (fromJust (parameters procedureSR)) parameterValues
+                            declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables procedureSR)
+                            procedureAR = AR {
+                                arName = (srName procedureSR),
+                                arLevel = arLevel (head (callStack i')),
+                                arType = srType procedureSR,
+                                vars = declaredVars
+                            }
+                        in do
+                            res' <- interpretStatement (pure (Right i' {currentSR = procedureSR, callStack = procedureAR : (callStack i')})) (srBody procedureSR)
+                            return (case res' of
+                                Left er -> Left er
+                                Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')}))
+        (Right _, Compound sttms) -> foldl interpretStatement ioi sttms
+        (Right i, If {iCondition, iIfRoute, iElseRoute}) -> do
+            res <- interpretExpression i iCondition
+            case res of
+                Left er -> pure (Left er)
+                Right (i', v) -> case expectBooleanType v of
+                    Left er -> pure (Left er)
+                    Right (Boolean True) -> interpretStatement (pure (Right i')) iIfRoute
+                    Right (Boolean False) -> case iElseRoute of
+                            Just sttm -> interpretStatement (pure (Right i')) sttm
+                            Nothing -> pure (Right i')
+        (Right i, whileSttm@(While {wCondition, wBody})) -> do
+            res <- interpretExpression i wCondition
+            case res of
+                Left er -> pure (Left er)
+                Right (i', v) -> case expectBooleanType v of
+                    Left er -> pure (Left er)
+                    Right (Boolean False) -> pure (Right i')
+                    Right (Boolean True) -> do
+                        res' <- interpretStatement (pure (Right i')) wBody
+                        case res' of
+                            Left er -> pure (Left er)
+                            Right i'' -> interpretStatement (pure (Right i'')) whileSttm
 
-
-interpretExpression :: Interpreter -> Expression -> Either InterpretationError (Interpreter, Value)
-interpretExpression i (Val v) = Right (i, v)
-interpretExpression i (VarRef iden) = case varValue of
+interpretExpression :: Interpreter -> Expression -> IO (Either InterpretationError (Interpreter, Value))
+interpretExpression i (Val v) = pure (Right (i, v))
+interpretExpression i (VarRef iden) = pure (case varValue of
     Just v -> Right (i, v)
-    Nothing -> Right (i, getDefaultValue varType)
+    Nothing -> Right (i, getDefaultValue varType))
     where vi = findVarInCallStack (idValue iden) (callStack i)
           varType = viType vi
           varValue = viValue vi
-interpretExpression i (UnOp unOp expr) = case interpretExpression i expr of
-    Left er -> Left er
-    Right (i', v) -> case unOp of
-        Not -> case expectBooleanType v of
-            Left er -> Left er
-            Right (Boolean b) -> Right (i', Boolean (not b))
-        UnaryPlus -> case expectIntType v of
-            Left er -> Left er
-            Right (IntNum n) -> Right (i', IntNum n)
-        UnaryMinus -> case expectIntType v of
-            Left er -> Left er
-            Right (IntNum n) -> Right (i', IntNum (-n))
-interpretExpression i (BinOp {boOp, boLeft, boRight}) = case interpretExpression i boLeft of
-    Left er -> Left er
-    Right (i', lv) -> case boOp of
-        And -> case lv of
-            Boolean False -> Right (i', Boolean False)
-            Boolean lvv@True -> case interpretExpression i' boRight of
+interpretExpression i (UnOp unOp expr) = do 
+    res <- interpretExpression i expr
+    return (case res of
+        Left er -> Left er
+        Right (i', v) -> case unOp of
+            Not -> case expectBooleanType v of
                 Left er -> Left er
-                Right (i'', Boolean rvv) -> Right (i'', Boolean (lvv && rvv))
-                Right _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-            _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-        Or -> case lv of
-            Boolean True -> Right (i', Boolean True)
-            Boolean lvv@False -> case interpretExpression i' boRight of
+                Right (Boolean b) -> Right (i', Boolean (not b))
+            UnaryPlus -> case expectIntType v of
                 Left er -> Left er
-                Right (i'', Boolean rvv) -> Right (i'', Boolean (lvv || rvv))
-                Right _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-            _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-        _ -> case interpretExpression i' boRight of
-            Left er -> Left er
-            Right (i'', rv) -> case boOp of
-                Plus -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv + rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Minus -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv - rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Mul -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv * rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Div -> case (lv, rv) of -- TODO: use '/' and return Double type
-                   (IntNum lvv, IntNum rvv) -> if rvv == 0 
-                                               then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
-                                               else Right (i'', IntNum (div lvv rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                FullDiv -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> if rvv == 0 
-                                               then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
-                                               else Right (i'', IntNum (div lvv rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Mod -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> if rvv == 0 
-                                               then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
-                                               else Right (i'', IntNum (mod lvv rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Eql -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv == rvv))
-                   (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv == rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Neql -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv /= rvv))
-                   (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Gt -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv > rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Gte -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv >= rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Lt -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv < rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                Lte -> case (lv, rv) of
-                   (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv <= rvv))
-                   _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing)
-                Xor -> case (lv, rv) of
-                    (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
-                    _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-interpretExpression i (FuncCall {fcName, fcParams}) = case interpretParams i fcParams of
-    Left er -> Left er
-    Right (i', parameterValues) ->
-        let currSR = currentSR i'
-            functionName = idValue fcName
-            functionSR = findFunctionSR (idValue fcName) (currentSR i')
-            paramVars = buildParameterMap (fromJust (parameters functionSR)) parameterValues
-            declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables functionSR)
-            finalVars = insert functionName (VI {viName = functionName, viType = fromJust (srReturnType functionSR), viValue = Nothing}) declaredVars
-            functionAR = AR {
-                arName = (srName functionSR),
-                arLevel = arLevel (head (callStack i')),
-                arType = srType functionSR,
-                vars = finalVars
-            }
-        in case interpretStatement (Right i' {currentSR = functionSR, callStack = functionAR : (callStack i')}) (srBody functionSR) of
-            Left er -> Left er
-            Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')}, fromJust (viValue (findVarInCallStack functionName (callStack i''))))
+                Right (IntNum n) -> Right (i', IntNum n)
+            UnaryMinus -> case expectIntType v of
+                Left er -> Left er
+                Right (IntNum n) -> Right (i', IntNum (-n)))
+interpretExpression i (BinOp {boOp, boLeft, boRight}) = do 
+    resl <- interpretExpression i boLeft
+    case resl of
+        Left er -> pure (Left er)
+        Right (i', lv) -> case boOp of
+            And -> case lv of
+                Boolean False -> pure (Right (i', Boolean False))
+                Boolean lvv@True -> do 
+                    resr <- interpretExpression i' boRight
+                    return (case resr of
+                        Left er -> Left er
+                        Right (i'', Boolean rvv) -> Right (i'', Boolean (lvv && rvv))
+                        Right _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing))
+                _ -> pure (Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing))
+            Or -> case lv of
+                Boolean True -> pure (Right (i', Boolean True))
+                Boolean lvv@False -> do 
+                    resr <- interpretExpression i' boRight
+                    return (case resr of
+                        Left er -> Left er
+                        Right (i'', Boolean rvv) -> Right (i'', Boolean (lvv || rvv))
+                        Right _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing))
+                _ -> pure (Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing))
+            _ -> do 
+                    resr <- interpretExpression i' boRight
+                    return (case resr of
+                        Left er -> Left er
+                        Right (i'', rv) -> case boOp of
+                            Plus -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv + rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Minus -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv - rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Mul -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv * rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Div -> case (lv, rv) of -- TODO: use '/' and return Double type
+                                (IntNum lvv, IntNum rvv) -> if rvv == 0 
+                                                            then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
+                                                            else Right (i'', IntNum (div lvv rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            FullDiv -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> if rvv == 0 
+                                                            then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
+                                                            else Right (i'', IntNum (div lvv rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Mod -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> if rvv == 0 
+                                                            then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
+                                                            else Right (i'', IntNum (mod lvv rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Eql -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv == rvv))
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv == rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Neql -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Gt -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv > rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Gte -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv >= rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Lt -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv < rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
+                            Lte -> case (lv, rv) of
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv <= rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing)
+                            Xor -> case (lv, rv) of
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing))
+interpretExpression i (FuncCall {fcName, fcParams}) = do 
+    res <- interpretParams i fcParams
+    case res of
+        Left er -> pure (Left er)
+        Right (i', parameterValues) ->
+            let currSR = currentSR i'
+                functionName = idValue fcName
+                functionSR = findFunctionSR (idValue fcName) (currentSR i')
+                paramVars = buildParameterMap (fromJust (parameters functionSR)) parameterValues
+                declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables functionSR)
+                finalVars = insert functionName (VI {viName = functionName, viType = fromJust (srReturnType functionSR), viValue = Nothing}) declaredVars
+                functionAR = AR {
+                    arName = (srName functionSR),
+                    arLevel = arLevel (head (callStack i')),
+                    arType = srType functionSR,
+                    vars = finalVars
+                }
+            in do 
+                res' <- interpretStatement (pure (Right i' {currentSR = functionSR, callStack = functionAR : (callStack i')})) (srBody functionSR)
+                return (case res' of
+                    Left er -> Left er
+                    Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')}, fromJust (viValue (findVarInCallStack functionName (callStack i'')))))
 interpretExpression i (Paren expr) = interpretExpression i expr
 
-interpretParams :: Interpreter -> [Expression] -> Either InterpretationError (Interpreter, [Value])
-interpretParams i = foldl interpretParam (Right (i, []))
-    where interpretParam i' p = case i' of
-            Left er -> Left er
-            Right (i'', l) -> case interpretExpression i'' p of
-                Left er -> Left er
-                Right (i''', v) -> Right (i''', v : l)
+interpretParams :: Interpreter -> [Expression] -> IO (Either InterpretationError (Interpreter, [Value]))
+interpretParams i = foldl interpretParam (pure (Right (i, [])))
+    where interpretParam ioi p = do
+            i' <- ioi
+            case i' of
+                Left er -> pure (Left er)
+                Right (i'', l) -> do 
+                    i''' <- interpretExpression i'' p
+                    return (case i''' of 
+                        Left er -> Left er
+                        Right (i''', v) -> Right (i''', v : l))
 
 buildParameterMap :: [ParamInfo] -> [Value] -> Map String VarInfo
 buildParameterMap params values = foldl (\paramMap (paramInfo, paramValue) -> insert (paiName paramInfo) (VI {viName = paiName paramInfo, viType = paiType paramInfo, viValue = Just paramValue}) paramMap) empty (zip params values)
