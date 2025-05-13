@@ -11,15 +11,15 @@ data Block = Block {bDeclarations :: [Declaration], bBody :: Statement} deriving
 data Declaration = VarDecl [Variable] | FuncDecl Function | ProcDecl Procedure deriving (Show)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse22.html
-data Variable = Var { vName :: Identifier, vType :: Identifier, vValue :: Maybe Value } deriving (Show)
+data Variable = Var { vName :: Identifier, vType :: DataType, vValue :: Maybe Value } deriving (Show)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse93.html#x177-20100014.2
-data Function = Function {fName :: Identifier, fParams :: [FormalParam], fResType :: Identifier, fBlock :: Block} deriving (Show)
+data Function = Function {fName :: Identifier, fParams :: [FormalParam], fResType :: DataType, fBlock :: Block} deriving (Show)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse92.html#x176-20000014.1
 data Procedure = Procedure {pName :: Identifier, pParams :: [FormalParam], pBlock :: Block} deriving (Show)
 
-data FormalParam = FormalParam {fpName :: Identifier, fpType :: Identifier} deriving (Show)
+data FormalParam = FormalParam {fpName :: Identifier, fpType :: DataType} deriving (Show)
 
 -- TODO: check the cases when:
 -- 1) function or procedure defined without parameters and parenthesis
@@ -69,6 +69,10 @@ data BinaryOp = Plus |
 data Identifier = Identifier {idValue :: String}
     deriving (Show)
 
+data DataType = DTInteger |
+                DTBoolean
+                deriving (Show, Eq)
+
 data Value = Boolean Bool |
              IntNum Int
              deriving (Show)
@@ -78,6 +82,7 @@ printValue (Boolean v) = show v
 printValue (IntNum v) = show v
 
 -- TODO: 
--- 2. Consider supporting  Real data type
+-- 1. Rework type checking in interpreter to have a Map {operator -> list of allowed data type pairs} for improved readability
+-- 2. Consider supporting Real data type
 -- 3. Consider adding more control flow statements (repeat..., for...)
 -- 5. Add readln function support

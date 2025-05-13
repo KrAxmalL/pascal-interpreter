@@ -34,7 +34,7 @@ data ScopeRecord = SR {
     srLevel :: Int,
     srType :: RecordType,
     parameters :: Maybe [ParamInfo],
-    srReturnType :: Maybe String,
+    srReturnType :: Maybe DataType,
     variables :: Map String VarInfo,
     functions :: Map String ScopeRecord,
     procedures :: Map String ScopeRecord,
@@ -52,10 +52,10 @@ isGlobalScopeRecord sr = case parentSR sr of
 
 data RecordType = RTProgram | RTFunction | RTProcedure deriving (Show)
 
-data VarInfo = VI {viName :: String, viType :: String, viValue :: Maybe Value} deriving (Show)
-data FuncInfo = FI { fiName :: String, fiParams :: [ParamInfo], fiResType :: String, fiBlock :: Block} deriving (Show)
-data ProcInfo = PRI { priName :: String, priParams :: [ParamInfo], priBlock :: Block} deriving (Show)
-data ParamInfo = PAI {paiName :: String, paiType :: String} deriving (Show)
+data VarInfo = VI {viName :: String, viType :: DataType, viValue :: Maybe Value} deriving (Show)
+data FuncInfo = FI {fiName :: String, fiParams :: [ParamInfo], fiResType :: DataType, fiBlock :: Block} deriving (Show)
+data ProcInfo = PRI {priName :: String, priParams :: [ParamInfo], priBlock :: Block} deriving (Show)
+data ParamInfo = PAI {paiName :: String, paiType :: DataType} deriving (Show)
 
 updateVarInCallStack :: String -> Value -> [ActivationRecord] -> [ActivationRecord]
 updateVarInCallStack varName val callStack =
@@ -111,7 +111,7 @@ applyInterpreter p = interpretStatement (pure (Right interpreter)) programBody
 buildProgramScopeRecord :: Program -> ScopeRecord
 buildProgramScopeRecord Program {pHeader, pBody} = buildBlockScopeRecord (idValue pHeader) 1 RTProgram Nothing Nothing pBody
 
-buildBlockScopeRecord :: String -> Int -> RecordType -> Maybe [ParamInfo] -> Maybe String -> Block -> ScopeRecord
+buildBlockScopeRecord :: String -> Int -> RecordType -> Maybe [ParamInfo] -> Maybe DataType -> Block -> ScopeRecord
 buildBlockScopeRecord nm lvl rt pms rett Block {bDeclarations, bBody} = 
     let initialSR = SR {
         srName = nm, 
@@ -130,14 +130,14 @@ buildDeclarationScopeRecord :: ScopeRecord -> Declaration -> ScopeRecord
 buildDeclarationScopeRecord sr (VarDecl varDecls) = foldl interpretVar sr varDecls
     where interpretVar sr' vd =
             let varName = idValue (vName vd)
-                varType = idValue (vType vd)
+                varType = vType vd
                 newVI = VI {viName = varName, viType = varType, viValue = vValue vd}
             in sr' {variables = insert varName newVI (variables sr')}
 buildDeclarationScopeRecord sr (FuncDecl fn) =
     let fnName = idValue (fName fn)
         lvl = (srLevel sr) + 1
-        pms = Just (map (\p -> PAI {paiName = (idValue (fpName p)), paiType = idValue (fpType p)}) (fParams fn))
-        retType = Just (idValue (fResType fn))
+        pms = Just (map (\p -> PAI {paiName = (idValue (fpName p)), paiType = fpType p}) (fParams fn))
+        retType = Just (fResType fn)
         body = fBlock fn
         functionSR = buildBlockScopeRecord fnName lvl RTFunction pms retType body
         updatedSR = sr {
@@ -147,7 +147,7 @@ buildDeclarationScopeRecord sr (FuncDecl fn) =
 buildDeclarationScopeRecord sr (ProcDecl pr) =
     let prName = idValue (pName pr)
         lvl = (srLevel sr) + 1
-        pms = Just (map (\p -> PAI {paiName = (idValue (fpName p)), paiType = idValue (fpType p)}) (pParams pr))
+        pms = Just (map (\p -> PAI {paiName = (idValue (fpName p)), paiType = fpType p}) (pParams pr))
         retType = Nothing
         body = pBlock pr
         procedureSR = buildBlockScopeRecord prName lvl RTProcedure pms retType body
@@ -371,6 +371,6 @@ expectType t v = case t of
     _ -> error "unreachable"
     where typeError = Left (InterpretationError WrongTypeError ("Wrong value type! Expected type: '" ++ t ++ "'!") Nothing)
 
-getDefaultValue :: String -> Value
-getDefaultValue "Integer" = IntNum 0
-getDefaultValue "Boolean" = Boolean False
+getDefaultValue :: DataType -> Value
+getDefaultValue DTInteger = IntNum 0
+getDefaultValue DTBoolean = Boolean False

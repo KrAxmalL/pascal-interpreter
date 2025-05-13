@@ -47,9 +47,9 @@ varDeclP = do
   _ <- lexeme1P (string "var")
   varName <- lexemeP allowedIdentifierP
   _ <- lexemeP colonP
-  typeName <- lexemeP allowedIdentifierP
+  varType <- dataTypeP
   _ <- lexemeP semicolonP
-  return (VarDecl [Var {vName = varName, vType = typeName, vValue = Nothing}])
+  return (VarDecl [Var {vName = varName, vType = varType, vValue = Nothing}])
 
 funcDeclP :: Parser Declaration
 funcDeclP = do
@@ -57,7 +57,7 @@ funcDeclP = do
   name <- lexemeP allowedIdentifierP
   formalParams <- parenthesisP formalParamListP
   _ <- lexemeP colonP
-  returnType <- lexemeP allowedIdentifierP
+  returnType <- dataTypeP
   _ <- lexemeP semicolonP
   block <- blockP
   _ <- lexemeP semicolonP
@@ -79,7 +79,7 @@ formalParamListP = sepBy formalParamP (lexemeP semicolonP)
     formalParamP = do
       paramName <- lexemeP allowedIdentifierP
       _ <- lexemeP colonP
-      paramType <- lexemeP allowedIdentifierP
+      paramType <- lexemeP dataTypeP
       return (FormalParam {fpName = paramName, fpType = paramType} )
 
 integerP :: Parser Integer
@@ -247,6 +247,13 @@ valueP = unsignedNumberP <|> boolP
           return (case v of
             "true" -> Boolean True
             "false" -> Boolean False)
+
+dataTypeP :: Parser DataType
+dataTypeP = do
+          v <- lexemeP (string "Integer" <|> string "Boolean")
+          return (case v of
+            "Integer" -> DTInteger
+            "Boolean" -> DTBoolean)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse4.html#x15-140001.4
 identifierP :: Parser Identifier
