@@ -173,10 +173,10 @@ interpretStatement ioi sttm = do
                 Right (i', parameterValues) -> 
                     case (idValue pcName) of
                          "write" -> do
-                                      putStr (foldl1 (++) (map printValue parameterValues))
+                                      putStr (foldl (++) "" (map printValue parameterValues))
                                       return (Right (i'))
                          "writeln" -> do
-                                      putStrLn (foldl1 (++) (map printValue parameterValues))
+                                      putStrLn (foldl (++) "" (map printValue parameterValues))
                                       return (Right (i'))
                          pcNameStr -> 
                             let currSR = currentSR i'

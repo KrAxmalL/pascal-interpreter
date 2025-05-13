@@ -117,17 +117,18 @@ integerTypeInfo = TI {tiName = "Integer"}
 
 booleanTypeInfo :: TypeInfo
 booleanTypeInfo = TI {tiName = "Boolean"}
+
 startingAnalyzer :: Analyzer
 startingAnalyzer = A {
     currentScope = sc,
     globalScope = sc}
     where sc = Scope {
-        types = Map.fromList [("Integer", integerTypeInfo), ("Boolean", booleanTypeInfo)],
-     variables = Map.empty,
-     functions = Map.empty,
-     procedures = Map.fromList [("write", PRI { priName = "write", priParams = []}), ("writeln", PRI { priName = "writeln", priParams = []})], -- TODO: consider adding readln
-     scopeLevel = 1,
-     parentScope = Nothing
+      types = Map.fromList [("Integer", integerTypeInfo), ("Boolean", booleanTypeInfo)],
+      variables = Map.empty,
+      functions = Map.empty,
+      procedures = Map.fromList [("write", PRI { priName = "write", priParams = []}), ("writeln", PRI { priName = "writeln", priParams = []})], -- TODO: consider adding readln
+      scopeLevel = 1,
+      parentScope = Nothing
     }
 
 applyAnalyzer :: Program -> Either AnalysisError Analyzer
@@ -211,10 +212,11 @@ analyzeStatement ea@(Right a) Assignment {aName, aValue} = case getVar (currentS
 analyzeStatement (Right a) ProcCall {pcName, pcParams} = case getProc (currentScope a) procName of
     Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
     Right pri -> 
-        let isIOProcedure = elem (idValue pcName) ["write", "writeln"]
-            procParams = if isIOProcedure then [PAI {paiName = "v1", paiType = TI {tiName = ""}}] else priParams pri
-            ignoreParamTypes = isIOProcedure
-        in case analyzeActualParams a procParams pcParams ignoreParamTypes of
+        let analysisResult = 
+                if elem (idValue pcName) ["write", "writeln"]
+                then analyzeActualParamsIO a [integerTypeInfo, booleanTypeInfo] pcParams
+                else analyzeActualParams a (priParams pri) pcParams
+        in case analysisResult of
             Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
             Right a' -> Right a'
     where procName = idValue pcName
@@ -248,7 +250,7 @@ analyzeExpression (Right a) (VarRef iden) = case getVar (currentScope a) (idValu
     Right vi -> Right (viType vi)
 analyzeExpression (Right a) (FuncCall {fcName, fcParams}) = case getFunc (currentScope a) funcName of
     Left er -> Left (AnalysisError FunctionCallError ("Error when calling function '" ++ funcName ++ "'!") (Just er))
-    Right fi -> case analyzeActualParams a (fiParams fi) fcParams False of
+    Right fi -> case analyzeActualParams a (fiParams fi) fcParams of
         Left er -> Left (AnalysisError FunctionCallError ("Error when calling function '" ++ funcName ++ "'!") (Just er))
         Right _ -> Right (fiResType fi)
     where funcName = idValue fcName
@@ -296,8 +298,8 @@ expectTypes expr exl ac = if elem ac exl
     then Right ac
     else Left (AnalysisError TypeMismatchError ("Expression: " ++ (show expr) ++ " has wrong type! Expected one of these types: " ++ (show (map tiName exl)) ++ ". Actual type: " ++ (tiName ac)) Nothing)
 
-analyzeActualParams :: Analyzer -> [ParamInfo] -> [Expression] -> Bool -> Either AnalysisError Analyzer
-analyzeActualParams a fps aps ignoreParamTypes = if fpsl /= apsl
+analyzeActualParams :: Analyzer -> [ParamInfo] -> [Expression] -> Either AnalysisError Analyzer
+analyzeActualParams a fps aps = if fpsl /= apsl
     then Left (AnalysisError ActualParameterError ("Amounts of formal and actual parameters are different! FP amount: " ++ (show fpsl) ++ ", AP amount: " ++ (show apsl)) Nothing)
     else foldl analyzeParamType (Right a) (zip3 fps aps [1..])
     where fpsl = length fps
@@ -306,9 +308,19 @@ analyzeActualParams a fps aps ignoreParamTypes = if fpsl /= apsl
             (Left er, _) -> Left er
             (a''@(Right _), (fp, ap, index)) -> case analyzeExpression a'' ap of
                 Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                Right ti -> if (ignoreParamTypes || (ti == paiType fp))
+                Right ti -> if (ti == paiType fp)
                     then a''
                     else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: " ++ (tiName (paiType fp)) ++ ". Actual: " ++ (tiName ti)) Nothing)
+
+analyzeActualParamsIO :: Analyzer -> [TypeInfo] -> [Expression] -> Either AnalysisError Analyzer
+analyzeActualParamsIO a tis aps = foldl analyzeParamType (Right a) (zip aps [0..])
+    where analyzeParamType a' p = case (a', p) of
+            (Left er, _) -> Left er
+            (a''@(Right _), (ap, index)) -> case analyzeExpression a'' ap of
+                Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
+                Right ti -> if (elem ti tis)
+                    then a''
+                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show tis) ++ ". Actual: " ++ (tiName ti)) Nothing)
 
 testVarDecl :: Declaration
 testVarDecl = VarDecl
