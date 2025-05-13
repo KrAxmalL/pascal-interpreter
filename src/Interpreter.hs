@@ -170,27 +170,30 @@ interpretStatement ioi sttm = do
             res <- interpretParams i pcParams
             case res of
                 Left er -> pure (Left er)
-                Right (i', parameterValues) ->
-                    if (idValue pcName) == "writeln"
-                    then do
-                        putStrLn (foldl1 (++) (map printValue parameterValues))
-                        return (Right (i'))
-                    else
-                        let currSR = currentSR i'
-                            procedureSR = findProcedureSR (idValue pcName) (currentSR i')
-                            paramVars = buildParameterMap (fromJust (parameters procedureSR)) parameterValues
-                            declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables procedureSR)
-                            procedureAR = AR {
-                                arName = (srName procedureSR),
-                                arLevel = arLevel (head (callStack i')),
-                                arType = srType procedureSR,
-                                vars = declaredVars
-                            }
-                        in do
-                            res' <- interpretStatement (pure (Right i' {currentSR = procedureSR, callStack = procedureAR : (callStack i')})) (srBody procedureSR)
-                            return (case res' of
-                                Left er -> Left er
-                                Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')}))
+                Right (i', parameterValues) -> 
+                    case (idValue pcName) of
+                         "write" -> do
+                                      putStr (foldl1 (++) (map printValue parameterValues))
+                                      return (Right (i'))
+                         "writeln" -> do
+                                      putStrLn (foldl1 (++) (map printValue parameterValues))
+                                      return (Right (i'))
+                         pcNameStr -> 
+                            let currSR = currentSR i'
+                                procedureSR = findProcedureSR pcNameStr (currentSR i')
+                                paramVars = buildParameterMap (fromJust (parameters procedureSR)) parameterValues
+                                declaredVars = foldl (\varMap varInfo -> insert (viName varInfo) varInfo varMap) paramVars (variables procedureSR)
+                                procedureAR = AR {
+                                    arName = (srName procedureSR),
+                                    arLevel = arLevel (head (callStack i')),
+                                    arType = srType procedureSR,
+                                    vars = declaredVars
+                                }
+                            in do
+                                 res' <- interpretStatement (pure (Right i' {currentSR = procedureSR, callStack = procedureAR : (callStack i')})) (srBody procedureSR)
+                                 return (case res' of
+                                     Left er -> Left er
+                                     Right i'' -> Right (i'' {currentSR = currSR, callStack = tail (callStack i'')}))
         (Right _, Compound sttms) -> foldl interpretStatement ioi sttms
         (Right i, If {iCondition, iIfRoute, iElseRoute}) -> do
             res <- interpretExpression i iCondition

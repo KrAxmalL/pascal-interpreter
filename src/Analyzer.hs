@@ -125,7 +125,7 @@ startingAnalyzer = A {
         types = Map.fromList [("Integer", integerTypeInfo), ("Boolean", booleanTypeInfo)],
      variables = Map.empty,
      functions = Map.empty,
-     procedures = Map.fromList [("writeln", PRI { priName = "writeln", priParams = []})], -- TODO: consider adding readln
+     procedures = Map.fromList [("write", PRI { priName = "write", priParams = []}), ("writeln", PRI { priName = "writeln", priParams = []})], -- TODO: consider adding readln
      scopeLevel = 1,
      parentScope = Nothing
     }
@@ -211,9 +211,9 @@ analyzeStatement ea@(Right a) Assignment {aName, aValue} = case getVar (currentS
 analyzeStatement (Right a) ProcCall {pcName, pcParams} = case getProc (currentScope a) procName of
     Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
     Right pri -> 
-        let isWriteln = (idValue pcName) == "writeln"
-            procParams = if isWriteln then [PAI {paiName = "v1", paiType = TI {tiName = ""}}] else priParams pri
-            ignoreParamTypes = isWriteln
+        let isIOProcedure = elem (idValue pcName) ["write", "writeln"]
+            procParams = if isIOProcedure then [PAI {paiName = "v1", paiType = TI {tiName = ""}}] else priParams pri
+            ignoreParamTypes = isIOProcedure
         in case analyzeActualParams a procParams pcParams ignoreParamTypes of
             Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
             Right a' -> Right a'

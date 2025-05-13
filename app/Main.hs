@@ -37,7 +37,10 @@ runInterpreter filePath = do
                     putStrLn (show a)
                     putStrLn (take 40 $ repeat '-')
                     putStrLn "Interpreting program..."
+                    putStrLn "Program output:"
                     intrRes <- applyInterpreter pr
+                    putStrLn ("\n" ++ (take 40 $ repeat '-'))
+                    putStrLn "Final interpreter state:"
                     case intrRes of
                         Left er -> putStrLn (printInterpretationError er)
                         Right i -> putStrLn (show i)
