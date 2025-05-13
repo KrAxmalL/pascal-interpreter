@@ -24,7 +24,7 @@ programP = do
   where
     headerP = do
         _ <- lexemeP (string "program")
-        ident <- lexemeP identifierP
+        ident <- lexemeP allowedIdentifierP
         _ <- lexemeP semicolonP
         return ident
 
@@ -32,6 +32,7 @@ programP = do
 blockP :: Parser Block
 blockP = do
   declarations <- many (varDeclP <|> funcDeclP <|> procDeclP)
+  _ <- lexemeP (string "begin")
   sttm <- compoundStatementP
   return (Block { bDeclarations = declarations,
      bBody = sttm})
@@ -44,19 +45,19 @@ blockP = do
 varDeclP :: Parser Declaration
 varDeclP = do
   _ <- lexeme1P (string "var")
-  varName <- lexemeP identifierP
+  varName <- lexemeP allowedIdentifierP
   _ <- lexemeP colonP
-  typeName <- lexemeP identifierP
+  typeName <- lexemeP allowedIdentifierP
   _ <- lexemeP semicolonP
   return (VarDecl [Var {vName = varName, vType = typeName, vValue = Nothing}])
 
 funcDeclP :: Parser Declaration
 funcDeclP = do
   _ <- lexeme1P (string "function")
-  name <- lexemeP identifierP
+  name <- lexemeP allowedIdentifierP
   formalParams <- parenthesisP formalParamListP
   _ <- lexemeP colonP
-  returnType <- lexemeP identifierP
+  returnType <- lexemeP allowedIdentifierP
   _ <- lexemeP semicolonP
   block <- blockP
   _ <- lexemeP semicolonP
@@ -65,7 +66,7 @@ funcDeclP = do
 procDeclP :: Parser Declaration
 procDeclP = do
   _ <- lexeme1P (string "procedure")
-  name <- lexemeP identifierP
+  name <- lexemeP allowedIdentifierP
   formalParams <- parenthesisP formalParamListP
   _ <- lexemeP semicolonP
   block <- blockP
@@ -76,9 +77,9 @@ formalParamListP :: Parser [FormalParam]
 formalParamListP = sepBy formalParamP (lexemeP semicolonP)
   where
     formalParamP = do
-      paramName <- lexemeP identifierP
+      paramName <- lexemeP allowedIdentifierP
       _ <- lexemeP colonP
-      paramType <- lexemeP identifierP
+      paramType <- lexemeP allowedIdentifierP
       return (FormalParam {fpName = paramName, fpType = paramType} )
 
 integerP :: Parser Integer
@@ -92,70 +93,53 @@ integerP = do
 
 
 statementP :: Parser Statement
-statementP = try simpleStatementP <|> structuredStatementP
-
-simpleStatementP :: Parser Statement
-simpleStatementP =  try assignmentP <|> procCallP
-
-structuredStatementP :: Parser Statement
-structuredStatementP = compoundStatementP <|> conditionalStatementP <|> repetitiveStatementP
-
-conditionalStatementP :: Parser Statement
-conditionalStatementP = ifStatementP
-
-repetitiveStatementP :: Parser Statement
-repetitiveStatementP = whileStatementP -- forStatementP <|> repeatStatementP <|>
-
-assignmentP :: Parser Statement -- TODO: consider adding ops like +=, -=, etc.
-assignmentP = do
+statementP = do 
   iden <- lexemeP identifierP
-  _ <- lexemeP (string ":=")
-  expr <- expressionP
-  return (Assignment {aName = iden, aValue = expr})
-
-procCallP :: Parser Statement
-procCallP = do
-  iden <- lexemeP identifierP
-  exprs <- parenthesisP paramListP
-  return (ProcCall {pcName = iden, pcParams = exprs})
+  case idValue iden of
+    "if" -> ifStatementP
+    "while" -> whileStatementP
+    "begin" -> compoundStatementP
+    _ -> assignmentOrProcCallP iden
+    where 
+      ifStatementP = do
+        cond <- expressionP
+        _ <- lexeme1P (string "then")
+        ifSttm <- statementP
+        hasElse <- optionMaybe (lexeme1P (string "else"))
+        (case hasElse of
+          Just _ -> (do
+            elseSttm <- statementP
+            return (If { iCondition = cond,
+            iIfRoute = ifSttm,
+            iElseRoute = Just elseSttm}))
+          Nothing -> return ( If { iCondition = cond,
+          iIfRoute = ifSttm,
+          iElseRoute = Nothing}))
+      whileStatementP = do
+        cond <- expressionP
+        _ <- lexeme1P (string "do")
+        sttm <- statementP
+        return (While { wCondition = cond, wBody = sttm })
+      assignmentOrProcCallP iden = do
+        ch <- optionMaybe openParen
+        case ch of
+          Just _ -> procCallP
+          Nothing -> assignmentP
+          where
+            procCallP = do
+              exprs <- paramListP
+              _ <- lexemeP closeParen
+              return (ProcCall {pcName = iden, pcParams = exprs})
+            assignmentP = do -- TODO: consider adding ops like +=, -=, etc.
+              _ <- lexemeP (string ":=")
+              expr <- expressionP
+              return (Assignment {aName = iden, aValue = expr})
 
 compoundStatementP :: Parser Statement
 compoundStatementP = do
-  _ <- lexeme1P (string "begin")
-  sttms <- endBy statementP (lexemeP semicolonP)
+  sttms <- endBy (try statementP) (lexemeP semicolonP)
   _ <- lexemeP (string "end")
   return (Compound sttms)
-
-ifStatementP :: Parser Statement
-ifStatementP = do
-  _ <- lexemeP (string "if")
-  cond <- expressionP
-  _ <- lexeme1P (string "then")
-  ifSttm <- statementP
-  hasElse <- optionMaybe (lexeme1P (string "else"))
-  (case hasElse of
-    Just _ -> (do
-      elseSttm <- statementP
-      return (If { iCondition = cond,
-      iIfRoute = ifSttm,
-      iElseRoute = Just elseSttm}))
-    Nothing -> return ( If { iCondition = cond,
-    iIfRoute = ifSttm,
-    iElseRoute = Nothing}))
-
-forStatementP :: Parser Statement
-forStatementP = undefined
-
-whileStatementP :: Parser Statement
-whileStatementP = do
-  _ <- lexemeP (string "while")
-  cond <- expressionP
-  _ <- lexeme1P (string "do")
-  sttm <- statementP
-  return (While { wCondition = cond, wBody = sttm })
-
-repeatStatementP :: Parser Statement
-repeatStatementP = undefined
 
 -- https://www.freepascal.org/docs-html/current/ref/refse81.html#x143-16700012.1
 expressionP :: Parser Expression
@@ -236,11 +220,11 @@ factorP = do
             expr <- lexemeP factorP
             return (UnOp (if sign == '+' then UnaryPlus else UnaryMinus) expr)
         varRefOrFuncCallP = do
-          iden <- lexemeP identifierP
+          iden <- lexemeP allowedIdentifierP
           ch <- optionMaybe openParen
           (case ch of
              Just _ -> funcCallP iden
-             _ -> return (VarRef iden))
+             Nothing -> return (VarRef iden))
           where
             funcCallP iden = do
               exprs <- paramListP
@@ -269,13 +253,15 @@ identifierP :: Parser Identifier
 identifierP = do
   bg <- letter <|> underscoreP
   rest <- many (letter <|> digit <|> underscoreP)
-  keywordCheckP (bg:rest)
+  return (Identifier {idValue = bg:rest})
   where underscoreP = char '_'
-        keywordCheckP iden = 
-          let identifier = Identifier {idValue =  iden}
-          in if (elem iden reservedKeywords) 
-             then unexpected iden 
-             else return (identifier)
+
+allowedIdentifierP :: Parser Identifier
+allowedIdentifierP = do
+  iden@(Identifier {idValue}) <- identifierP
+  if (elem idValue reservedKeywords)
+  then unexpected idValue
+  else return (iden)
 
 numberP :: Parser String
 numberP = many1 digit
