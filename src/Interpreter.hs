@@ -1,5 +1,6 @@
 module Interpreter(applyInterpreter, printInterpretationError) where
 
+import Text.Read(readEither)
 import Lexic
 import Data.Map.Strict (Map, empty, insert, lookup)
 import Text.Printf(printf)
@@ -7,7 +8,8 @@ import Data.Maybe
 
 data InterpretationError = InterpretationError InterpretationErrorType String (Maybe InterpretationError) deriving (Show)
 data InterpretationErrorType = WrongTypeError |
-                               DivisionByZeroError
+                               DivisionByZeroError |
+                               WrongReadProcedureArgumentError
                                deriving (Show)
 
 printInterpretationError :: InterpretationError -> String
@@ -178,6 +180,8 @@ interpretStatement ioi sttm = do
                          "writeln" -> do
                                       putStrLn (foldl (++) "" (map printValue parameterValues))
                                       return (Right (i'))
+                         "read" -> interpretReadProcedure i' pcParams
+                         "readln" -> interpretReadProcedure i' pcParams
                          pcNameStr -> 
                             let currSR = currentSR i'
                                 procedureSR = findProcedureSR pcNameStr (currentSR i')
@@ -217,6 +221,33 @@ interpretStatement ioi sttm = do
                         case res' of
                             Left er -> pure (Left er)
                             Right i'' -> interpretStatement (pure (Right i'')) whileSttm
+
+interpretReadProcedure :: Interpreter -> [Expression] -> IO (Either InterpretationError Interpreter)
+interpretReadProcedure i [] = pure (Right i)
+interpretReadProcedure i params = do
+        line <- getLine
+        let inputValues = words line
+            interpreterWithParams = foldl interpretParam (Right i) (zip params inputValues)
+         in if (length params) <= (length inputValues)
+            then return (interpreterWithParams)
+            else case interpreterWithParams of
+                Left er -> return (Left er)
+                Right i' -> interpretReadProcedure i' (snd (splitAt (length inputValues) params))
+    where interpretParam i (p, inp) = case i of
+            Left er -> Left er
+            Right i' -> case p of
+                VarRef varName -> 
+                    let varInfo = findVarInCallStack (idValue varName) (callStack i')
+                        varType = viType varInfo
+                    in case varType of
+                        DTInteger -> case readEither inp of
+                            Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show inp) Nothing)
+                            Right val -> Right (i' {callStack = updateVarInCallStack (idValue varName) (IntNum val) (callStack i')})
+                        DTReal -> case readEither inp of
+                            Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Real' from the input: " ++ show inp) Nothing)
+                            Right val -> Right (i' {callStack = updateVarInCallStack (idValue varName) (RealNum val) (callStack i')})
+                        _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Parameter has wrong type! Expected: one of " ++ (show [DTInteger, DTReal]) ++ ". Got: " ++ show varType) Nothing)
+                _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Parameters for 'read' and 'readln' procedures must be variable references!") Nothing)
 
 interpretExpression :: Interpreter -> Expression -> IO (Either InterpretationError (Interpreter, Value))
 interpretExpression i (Val v) = pure (Right (i, v))

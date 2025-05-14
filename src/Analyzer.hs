@@ -107,7 +107,12 @@ startingAnalyzer = A {
     where sc = Scope {
       variables = Map.empty,
       functions = Map.empty,
-      procedures = Map.fromList [("write", PRI { priName = "write", priParams = []}), ("writeln", PRI { priName = "writeln", priParams = []})],
+      procedures = Map.fromList [
+            ("write", PRI { priName = "write", priParams = []}),
+            ("writeln", PRI { priName = "writeln", priParams = []}),
+            ("read", PRI { priName = "read", priParams = []}),
+            ("readln", PRI { priName = "readln", priParams = []})
+        ],
       scopeLevel = 1,
       parentScope = Nothing
     }
@@ -288,7 +293,9 @@ analyzeStatement (Right a) ProcCall {pcName, pcParams} = case getProc (currentSc
     Right pri -> 
         let analysisResult = 
                 if elem (idValue pcName) ["write", "writeln"]
-                then analyzeActualParamsIO a [DTInteger, DTBoolean] pcParams
+                then analyzeWriteParams a pcParams
+                else if elem (idValue pcName) ["read", "readln"]
+                then analyzeReadParams a pcParams
                 else analyzeActualParams a (priParams pri) pcParams
         in case analysisResult of
             Left er -> Left (AnalysisError ProcedureCallError ("Error when calling procedure '" ++ procName ++ "'!") (Just er))
@@ -369,15 +376,29 @@ analyzeActualParams a fps aps = if fpsl /= apsl
                     then a''
                     else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: " ++ (show (paiType fp)) ++ ". Actual: " ++ (show dt)) Nothing)
 
-analyzeActualParamsIO :: Analyzer -> [DataType] -> [Expression] -> Either AnalysisError Analyzer
-analyzeActualParamsIO a dtl aps = foldl analyzeParamType (Right a) (zip aps [0..])
+analyzeWriteParams :: Analyzer -> [Expression] -> Either AnalysisError Analyzer
+analyzeWriteParams a aps = foldl analyzeParamType (Right a) (zip aps [0..])
     where analyzeParamType a' p = case (a', p) of
             (Left er, _) -> Left er
             (a''@(Right _), (ap, index)) -> case analyzeExpression a'' ap of
                 Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                Right dt -> if (elem dt dtl)
+                Right dt -> if (elem dt allowedParameterTypes)
                     then a''
-                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show dtl) ++ ". Actual: " ++ (show dt)) Nothing)
+                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show allowedParameterTypes) ++ ". Actual: " ++ (show dt)) Nothing)
+          allowedParameterTypes = [DTInteger, DTReal, DTBoolean]
+
+analyzeReadParams :: Analyzer -> [Expression] -> Either AnalysisError Analyzer
+analyzeReadParams a aps = foldl analyzeParam (Right a) (zip aps [0..])
+     where analyzeParam a' p = case (a', p) of
+            (Left er, _) -> Left er
+            (a''@(Right _), (ap@(VarRef _), index)) ->
+                case analyzeExpression a'' ap of
+                    Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
+                    Right dt -> if (elem dt allowedParameterTypes)
+                        then a''
+                        else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show allowedParameterTypes) ++ ". Actual: " ++ (show dt)) Nothing)
+            (a''@(Right _), (_, index)) -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "! Only variable references are allowed as a parameters!") Nothing)
+           allowedParameterTypes = [DTInteger, DTReal]
 
 testVarDecl :: Declaration
 testVarDecl = VarDecl
