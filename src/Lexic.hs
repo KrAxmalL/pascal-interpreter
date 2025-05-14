@@ -45,7 +45,7 @@ data Expression = Val Value |
 data UnaryOp = Not |
                UnaryPlus |
                UnaryMinus
-               deriving (Show, Eq)
+               deriving (Show, Eq, Ord)
 
 data BinaryOp = Plus |
                 Minus |
@@ -62,7 +62,7 @@ data BinaryOp = Plus |
                 And |
                 Or |
                 Xor
-                deriving (Show, Eq)
+                deriving (Show, Eq, Ord)
 
 
 -- https://www.freepascal.org/docs-html/current/ref/refse4.html#x15-140001.4
@@ -82,7 +82,6 @@ printValue (Boolean v) = show v
 printValue (IntNum v) = show v
 
 -- TODO: 
--- 1. Rework type checking in interpreter to have a Map {operator -> list of allowed data type pairs} for improved readability
--- 2. Consider supporting Real data type
--- 3. Consider adding more control flow statements (repeat..., for...)
--- 5. Add readln function support
+-- 1. Consider supporting Real data type
+-- 2. Consider adding more control flow statements (repeat..., for...)
+-- 3. Add readln function support

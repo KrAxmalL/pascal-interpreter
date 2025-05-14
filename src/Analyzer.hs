@@ -107,10 +107,72 @@ startingAnalyzer = A {
     where sc = Scope {
       variables = Map.empty,
       functions = Map.empty,
-      procedures = Map.fromList [("write", PRI { priName = "write", priParams = []}), ("writeln", PRI { priName = "writeln", priParams = []})], -- TODO: consider adding readln
+      procedures = Map.fromList [("write", PRI { priName = "write", priParams = []}), ("writeln", PRI { priName = "writeln", priParams = []})],
       scopeLevel = 1,
       parentScope = Nothing
     }
+
+unaryOpDataTypeMap :: Map.Map UnaryOp [(DataType, DataType)]
+unaryOpDataTypeMap = Map.fromList [
+        (Not, [(DTBoolean, DTBoolean)]),
+         (UnaryPlus, [(DTInteger, DTInteger)]),
+          (UnaryMinus, [(DTInteger, DTInteger)])
+    ]
+
+binaryOpDataTypeMap :: Map.Map BinaryOp [(DataType, DataType, DataType)]
+binaryOpDataTypeMap = Map.fromList [
+        (Plus, [
+            (DTInteger, DTInteger, DTInteger)
+        ]),
+        (Minus, [
+            (DTInteger, DTInteger, DTInteger)
+            ]),
+        (Mul, [
+            (DTInteger, DTInteger, DTInteger)
+            ]),
+        (Div, [
+            (DTInteger, DTInteger, DTInteger)
+            ]),
+        (FullDiv, [
+            (DTInteger, DTInteger, DTInteger)
+            ]),
+        (Mod, [
+            (DTInteger, DTInteger, DTInteger)
+            ]),
+        (Eql, [
+            (DTInteger, DTInteger, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Neql, [
+            (DTInteger, DTInteger, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Gt, [
+            (DTInteger, DTInteger, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Gte, [
+            (DTInteger, DTInteger, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Lt, [
+            (DTInteger, DTInteger, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Lte, [
+            (DTInteger, DTInteger, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (And, [
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Or, [
+            (DTBoolean, DTBoolean, DTBoolean)
+            ]),
+        (Xor, [
+            (DTBoolean, DTBoolean, DTBoolean)
+            ])
+    ] 
 
 applyAnalyzer :: Program -> Either AnalysisError Analyzer
 applyAnalyzer p = analyzeProgram startingAnalyzer p
@@ -230,41 +292,23 @@ analyzeExpression (Right a) (FuncCall {fcName, fcParams}) = case getFunc (curren
         Left er -> Left (AnalysisError FunctionCallError ("Error when calling function '" ++ funcName ++ "'!") (Just er))
         Right _ -> Right (fiResType fi)
     where funcName = idValue fcName
-analyzeExpression a@(Right _) (UnOp unOp expr) = case (unOp, analyzeExpression a expr) of
-    (op, Left er) -> Left (AnalysisError UnaryOperatorError ("Error in expression when using unary operator '" ++ (show op) ++ "'!") (Just er))
-    (op, Right ti) -> case getType of
-        Left er -> Left (buildError er)
-        Right ti -> Right ti
-        where buildError er' = AnalysisError UnaryOperatorError ("Error when using unary operator '" ++ (show op) ++ "'!") (Just er')
-              getType
-                | (op == Not) = expectType expr DTBoolean ti
-                | (elem op [UnaryPlus, UnaryMinus]) = expectType expr DTInteger ti
-                | otherwise = error "unreachable"
-analyzeExpression a@(Right _) (BinOp {boOp, boLeft, boRight}) = case (boOp, analyzeExpression a boLeft, analyzeExpression a boRight) of
-    (_, Left (AnalysisError TypeMismatchError lm _), Left (AnalysisError TypeMismatchError rm _)) -> Left (AnalysisError TypeMismatchError ("Left operand error:" ++ lm ++ ". Right operand error: " ++ rm) Nothing)
-    (_, Left er, _) -> Left er
-    (_, _, Left er) -> Left er
-    (op, Right lti, Right rti)  -> case getType of
-        Left er -> Left (buildError er)
-        Right ti -> Right ti
-        where buildError er' = AnalysisError BinaryOperatorError ("Error when using binary operator '" ++ (show op) ++ "'!") (Just er')
-              getType
-                | elem op [Plus, Minus, Mul, Div, FullDiv, Mod] = expectBinOpTypes DTInteger boLeft [DTInteger] lti boRight [DTInteger] rti True
-                | elem op [Eql, Neql] = expectBinOpTypes DTBoolean boLeft [DTInteger, DTBoolean] lti boRight [DTInteger, DTBoolean] rti True
-                | elem op [Gt, Gte, Lt, Lte] = expectBinOpTypes DTBoolean boLeft [DTInteger] lti boRight [DTInteger] rti True
-                | elem op [And, Or, Xor] = expectBinOpTypes DTBoolean boLeft [DTBoolean] lti boRight [DTBoolean] rti True
+analyzeExpression a@(Right _) (UnOp unOp expr) = case analyzeExpression a expr of
+    Left er -> Left (AnalysisError UnaryOperatorError ("Error in expression when using unary operator '" ++ (show unOp) ++ "'!") (Just er))
+    Right dt -> case Map.lookup unOp unaryOpDataTypeMap of
+        Nothing -> error "unreachable"
+        Just dts -> case find (\(exdt, _) -> dt == exdt) dts of
+            Nothing -> Left (AnalysisError UnaryOperatorError ("Error when using unary operator '" ++ (show unOp) ++ "'! Expected one of these types: " ++ (show (map fst dts)) ++ ". Got: " ++ (show dt)) Nothing)
+            Just (_, resultDT) -> Right resultDT
+analyzeExpression a@(Right _) (BinOp {boOp, boLeft, boRight}) = case analyzeExpression a boLeft of
+    Left er -> Left (AnalysisError BinaryOperatorError "Left operand error!" (Just er))
+    Right ldt -> case analyzeExpression a boRight of
+        Left er -> Left (AnalysisError BinaryOperatorError "Right operand error!" (Just er))
+        Right rdt -> case Map.lookup boOp binaryOpDataTypeMap of
+            Nothing -> error "unreachable"
+            Just dts -> case find (\(exldt, exrdt, _) -> (ldt == exldt) && (rdt == exrdt)) dts of
+                Nothing -> Left (AnalysisError BinaryOperatorError ("Error when using binary operator '" ++ (show boOp) ++ "'! Expected one of these type combinations: " ++ (show (map (\(exldt, exrdt, _) -> (exldt, exrdt)) dts)) ++ ". Got: " ++ (show (ldt, rdt))) Nothing)
+                Just (_, _, resultDT) -> Right resultDT
 analyzeExpression a@(Right _) (Paren expr) = analyzeExpression a expr
-
--- TODO: finish with improving error handling for binary operators
-expectBinOpTypes :: DataType -> Expression -> [DataType] -> DataType -> Expression -> [DataType] -> DataType -> Bool -> Either AnalysisError DataType
-expectBinOpTypes retTi exprl exl lti exprr exr rti shouldBeEqual = case (expectTypes exprl exl lti, expectTypes exprr exr rti) of
-    (Left (AnalysisError TypeMismatchError lm _), Left (AnalysisError TypeMismatchError rm _)) -> Left (AnalysisError TypeMismatchError ("Left operand error: " ++ lm ++ ". Right operand error: " ++ rm) Nothing)
-    (Left er, _) -> Left er
-    (_, Left er) -> Left er
-    (Right flti, Right frti) ->
-        if shouldBeEqual
-        then (if flti == frti then Right retTi else Left (AnalysisError TypeMismatchError ("Left operand type is not equal to right operand type! Left operand type: " ++ (show flti) ++ ". Right operand type: " ++ (show frti)) Nothing))
-        else Right retTi
 
 expectType :: Expression -> DataType -> DataType -> Either AnalysisError DataType
 expectType expr ex = expectTypes expr [ex]
@@ -284,19 +328,19 @@ analyzeActualParams a fps aps = if fpsl /= apsl
             (Left er, _) -> Left er
             (a''@(Right _), (fp, ap, index)) -> case analyzeExpression a'' ap of
                 Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                Right ti -> if (ti == paiType fp)
+                Right dt -> if (dt == paiType fp)
                     then a''
-                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: " ++ (show (paiType fp)) ++ ". Actual: " ++ (show ti)) Nothing)
+                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: " ++ (show (paiType fp)) ++ ". Actual: " ++ (show dt)) Nothing)
 
 analyzeActualParamsIO :: Analyzer -> [DataType] -> [Expression] -> Either AnalysisError Analyzer
-analyzeActualParamsIO a tis aps = foldl analyzeParamType (Right a) (zip aps [0..])
+analyzeActualParamsIO a dtl aps = foldl analyzeParamType (Right a) (zip aps [0..])
     where analyzeParamType a' p = case (a', p) of
             (Left er, _) -> Left er
             (a''@(Right _), (ap, index)) -> case analyzeExpression a'' ap of
                 Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                Right ti -> if (elem ti tis)
+                Right dt -> if (elem dt dtl)
                     then a''
-                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show tis) ++ ". Actual: " ++ (show ti)) Nothing)
+                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show dtl) ++ ". Actual: " ++ (show dt)) Nothing)
 
 testVarDecl :: Declaration
 testVarDecl = VarDecl
