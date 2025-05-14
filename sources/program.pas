@@ -2,9 +2,11 @@ program HelloWorld;
 
 var a: Integer;
 var b: Boolean;
-var e: Integer;
+var c: Integer;
+var e: Real;
 var x: Integer;
 var cond: Boolean;
+var t: Real;
 
 function add(c: Integer; d: Integer): Integer;
 begin
@@ -12,7 +14,7 @@ begin
 end;
 
 procedure print(k: Integer);
-   function divide(divisor: Integer): Integer;
+   function divide(divisor: Integer): Real;
    begin
       divide := divisor / k;
    end;
@@ -21,13 +23,14 @@ begin
 end;
 
 begin
+   a := -1;
    a := add(1, 4);
    print(5);
    b := a > e;
    if e > 5 then
       begin
-         b := (add(a, e) > 5) = (4 / a = e);
-         print(add(a, e));
+         b := (add(a, c) > 5) = (4 / a = c);
+         print(add(a, c));
       end
    else
       print(1);

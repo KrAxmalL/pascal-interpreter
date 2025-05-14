@@ -231,15 +231,18 @@ interpretExpression i (UnOp unOp expr) = do
     return (case res of
         Left er -> Left er
         Right (i', v) -> case unOp of
-            Not -> case expectBooleanType v of
-                Left er -> Left er
-                Right (Boolean b) -> Right (i', Boolean (not b))
-            UnaryPlus -> case expectIntType v of
-                Left er -> Left er
-                Right (IntNum n) -> Right (i', IntNum n)
-            UnaryMinus -> case expectIntType v of
-                Left er -> Left er
-                Right (IntNum n) -> Right (i', IntNum (-n)))
+            Not -> case v of
+                Boolean val -> Right (i', Boolean (not val))
+                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show unOp) ++ "' operator!") Nothing) 
+            UnaryPlus -> case v of
+                IntNum _ -> Right (i', v)
+                RealNum _ -> Right (i', v)
+                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show unOp) ++ "' operator!") Nothing) 
+            UnaryMinus -> case v of
+                IntNum val -> Right (i', IntNum (-val))
+                RealNum val -> Right (i', RealNum (-val))
+                _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show unOp) ++ "' operator!") Nothing) 
+        )
 interpretExpression i (BinOp {boOp, boLeft, boRight}) = do 
     resl <- interpretExpression i boLeft
     case resl of
@@ -270,17 +273,35 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                         Right (i'', rv) -> case boOp of
                             Plus -> case (lv, rv) of
                                 (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv + rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', RealNum ((fromIntegral lvv) + rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', RealNum (lvv + (fromIntegral rvv)))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', RealNum (lvv + rvv))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Minus -> case (lv, rv) of
                                 (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv - rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', RealNum ((fromIntegral lvv) - rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', RealNum (lvv - (fromIntegral rvv)))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', RealNum (lvv - rvv))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Mul -> case (lv, rv) of
                                 (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv * rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', RealNum ((fromIntegral lvv) * rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', RealNum (lvv * (fromIntegral rvv)))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', RealNum (lvv * rvv))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
-                            Div -> case (lv, rv) of -- TODO: use '/' and return Double type
+                            Div -> case (lv, rv) of
                                 (IntNum lvv, IntNum rvv) -> if rvv == 0 
                                                             then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
-                                                            else Right (i'', IntNum (div lvv rvv))
+                                                            else Right (i'', RealNum ((fromIntegral lvv) / (fromIntegral rvv)))
+                                (IntNum lvv, RealNum rvv) ->  if rvv == 0 
+                                                            then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
+                                                            else Right (i'', RealNum ((fromIntegral lvv) / rvv))
+                                (RealNum lvv, IntNum rvv) ->  if rvv == 0 
+                                                            then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
+                                                            else Right (i'', RealNum (lvv / (fromIntegral rvv)))
+                                (RealNum lvv, RealNum rvv) ->  if rvv == 0 
+                                                            then Left (InterpretationError DivisionByZeroError ("Can't use '" ++ (show boOp) ++ "' operator - division by zero") Nothing)
+                                                            else Right (i'', RealNum (lvv / rvv))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             FullDiv -> case (lv, rv) of
                                 (IntNum lvv, IntNum rvv) -> if rvv == 0 
@@ -293,24 +314,46 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                                             else Right (i'', IntNum (mod lvv rvv))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Eql -> case (lv, rv) of
-                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv == rvv))
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv == rvv))
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv == rvv))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv == rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) == rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv == (fromIntegral rvv)))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Neql -> case (lv, rv) of
-                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv /= rvv))
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) /= rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv /= (fromIntegral rvv)))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Gt -> case (lv, rv) of
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv > rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv > rvv))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv > rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) > rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv > (fromIntegral rvv)))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Gte -> case (lv, rv) of
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv >= rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv >= rvv))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv >= rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) >= rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv >= (fromIntegral rvv)))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Lt -> case (lv, rv) of
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv < rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv < rvv))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv < rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) < rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv < (fromIntegral rvv)))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Lte -> case (lv, rv) of
+                                (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv <= rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv <= rvv))
+                                (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv <= rvv))
+                                (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) <= rvv))
+                                (RealNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv <= (fromIntegral rvv)))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing)
                             Xor -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
@@ -354,23 +397,23 @@ interpretParams i = foldl interpretParam (pure (Right (i, [])))
 buildParameterMap :: [ParamInfo] -> [Value] -> Map String VarInfo
 buildParameterMap params values = foldl (\paramMap (paramInfo, paramValue) -> insert (paiName paramInfo) (VI {viName = paiName paramInfo, viType = paiType paramInfo, viValue = Just paramValue}) paramMap) empty (zip params values)
 
-expectIntType :: Value -> Either InterpretationError Value
-expectIntType = expectType "integer"
-
 expectBooleanType :: Value -> Either InterpretationError Value
-expectBooleanType = expectType "boolean"
+expectBooleanType = expectType DTBoolean
 
-expectType :: String -> Value -> Either InterpretationError Value
+expectType :: DataType -> Value -> Either InterpretationError Value
 expectType t v = case t of
-    "boolean" -> case v of
-                Boolean _ -> Right v
-                _ -> typeError
-    "integer" -> case v of
+    DTBoolean -> case v of
+        Boolean _ -> Right v
+        _ -> typeError
+    DTInteger -> case v of
         IntNum _ -> Right v
         _ -> typeError
-    _ -> error "unreachable"
-    where typeError = Left (InterpretationError WrongTypeError ("Wrong value type! Expected type: '" ++ t ++ "'!") Nothing)
+    DTReal -> case v of
+        RealNum _ -> Right v
+        _ -> typeError
+    where typeError = Left (InterpretationError WrongTypeError ("Wrong value type! Expected type: '" ++ (show t) ++ "'!") Nothing)
 
 getDefaultValue :: DataType -> Value
 getDefaultValue DTInteger = IntNum 0
+getDefaultValue DTReal = RealNum 0.0
 getDefaultValue DTBoolean = Boolean False

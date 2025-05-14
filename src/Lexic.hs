@@ -70,11 +70,13 @@ data Identifier = Identifier {idValue :: String}
     deriving (Show)
 
 data DataType = DTInteger |
+                DTReal |
                 DTBoolean
                 deriving (Show, Eq)
 
 data Value = Boolean Bool |
-             IntNum Int
+             IntNum Int |
+             RealNum Double
              deriving (Show)
 
 printValue :: Value -> String
@@ -82,6 +84,6 @@ printValue (Boolean v) = show v
 printValue (IntNum v) = show v
 
 -- TODO: 
--- 1. Consider supporting Real data type
+-- 1. Consider supporting String and Char data types
 -- 2. Consider adding more control flow statements (repeat..., for...)
 -- 3. Add readln function support

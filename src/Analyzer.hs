@@ -115,23 +115,41 @@ startingAnalyzer = A {
 unaryOpDataTypeMap :: Map.Map UnaryOp [(DataType, DataType)]
 unaryOpDataTypeMap = Map.fromList [
         (Not, [(DTBoolean, DTBoolean)]),
-         (UnaryPlus, [(DTInteger, DTInteger)]),
-          (UnaryMinus, [(DTInteger, DTInteger)])
+         (UnaryPlus, [
+            (DTInteger, DTInteger),
+            (DTReal, DTReal)
+            ]),
+          (UnaryMinus, [
+            (DTInteger, DTInteger),
+            (DTReal, DTReal)
+            ])
     ]
 
 binaryOpDataTypeMap :: Map.Map BinaryOp [(DataType, DataType, DataType)]
 binaryOpDataTypeMap = Map.fromList [
         (Plus, [
-            (DTInteger, DTInteger, DTInteger)
+            (DTInteger, DTInteger, DTInteger),
+            (DTInteger, DTReal, DTReal),
+            (DTReal, DTInteger, DTReal),
+            (DTReal, DTReal, DTReal)
         ]),
         (Minus, [
-            (DTInteger, DTInteger, DTInteger)
+            (DTInteger, DTInteger, DTInteger),
+            (DTInteger, DTReal, DTReal),
+            (DTReal, DTInteger, DTReal),
+            (DTReal, DTReal, DTReal)
             ]),
         (Mul, [
-            (DTInteger, DTInteger, DTInteger)
+            (DTInteger, DTInteger, DTInteger),
+            (DTInteger, DTReal, DTReal),
+            (DTReal, DTInteger, DTReal),
+            (DTReal, DTReal, DTReal)
             ]),
         (Div, [
-            (DTInteger, DTInteger, DTInteger)
+            (DTInteger, DTInteger, DTReal),
+            (DTInteger, DTReal, DTReal),
+            (DTReal, DTInteger, DTReal),
+            (DTReal, DTReal, DTReal)
             ]),
         (FullDiv, [
             (DTInteger, DTInteger, DTInteger)
@@ -141,26 +159,44 @@ binaryOpDataTypeMap = Map.fromList [
             ]),
         (Eql, [
             (DTInteger, DTInteger, DTBoolean),
+            (DTInteger, DTReal, DTBoolean),
+            (DTReal, DTInteger, DTBoolean),
+            (DTReal, DTReal, DTBoolean),
             (DTBoolean, DTBoolean, DTBoolean)
             ]),
         (Neql, [
             (DTInteger, DTInteger, DTBoolean),
+            (DTInteger, DTReal, DTBoolean),
+            (DTReal, DTInteger, DTBoolean),
+             (DTReal, DTReal, DTBoolean),
             (DTBoolean, DTBoolean, DTBoolean)
             ]),
         (Gt, [
             (DTInteger, DTInteger, DTBoolean),
+            (DTInteger, DTReal, DTBoolean),
+            (DTReal, DTInteger, DTBoolean),
+            (DTReal, DTReal, DTBoolean),
             (DTBoolean, DTBoolean, DTBoolean)
             ]),
         (Gte, [
             (DTInteger, DTInteger, DTBoolean),
+            (DTInteger, DTReal, DTBoolean),
+            (DTReal, DTInteger, DTBoolean),
+            (DTReal, DTReal, DTBoolean),
             (DTBoolean, DTBoolean, DTBoolean)
             ]),
         (Lt, [
             (DTInteger, DTInteger, DTBoolean),
+            (DTInteger, DTReal, DTBoolean),
+            (DTReal, DTInteger, DTBoolean),
+            (DTReal, DTReal, DTBoolean),
             (DTBoolean, DTBoolean, DTBoolean)
             ]),
         (Lte, [
             (DTInteger, DTInteger, DTBoolean),
+            (DTInteger, DTReal, DTBoolean),
+            (DTReal, DTInteger, DTBoolean),
+            (DTReal, DTReal, DTBoolean),
             (DTBoolean, DTBoolean, DTBoolean)
             ]),
         (And, [
@@ -282,6 +318,7 @@ analyzeExpression :: Either AnalysisError Analyzer -> Expression -> Either Analy
 analyzeExpression a@(Left er) _ = Left er
 analyzeExpression a@(Right _) (Val val) = case val of
     IntNum _ -> Right DTInteger
+    RealNum _ -> Right DTReal
     Boolean _ -> Right DTBoolean
 analyzeExpression (Right a) (VarRef iden) = case getVar (currentScope a) (idValue iden) of
     Left er -> Left (AnalysisError VariableReferenceError ("Error when referencing variable '" ++ (idValue iden) ++ "'!") (Just er))
@@ -369,10 +406,6 @@ testProcDecl = ProcDecl Procedure {
             bBody = Compound []
         }
     }
-
-getRight :: Either a b -> b
-getRight (Right v) = v
-getRight _ = error "Either doesn't have Right value"
 
 testIntNumExpr :: Expression
 testIntNumExpr = Val (IntNum 42)

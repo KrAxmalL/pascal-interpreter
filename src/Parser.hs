@@ -130,7 +130,7 @@ statementP = do
               exprs <- paramListP
               _ <- lexemeP closeParen
               return (ProcCall {pcName = iden, pcParams = exprs})
-            assignmentP = do -- TODO: consider adding ops like +=, -=, etc.
+            assignmentP = do
               _ <- lexemeP (string ":=")
               expr <- expressionP
               return (Assignment {aName = iden, aValue = expr})
@@ -240,19 +240,27 @@ paramListP = sepBy expressionP (lexemeP (char ','))
 valueP :: Parser Value
 valueP = unsignedNumberP <|> boolP
   where unsignedNumberP = do
-          number <- lexemeP numberP
-          return (IntNum (read number))
+          integralPart <- numberP
+          dot <- optionMaybe (char '.')
+          case dot of
+            Nothing -> do 
+              _ <- anySpacesP
+              return (IntNum (read integralPart))
+            Just _ -> do
+              fractionalPart <- lexemeP numberP
+              return (RealNum (read (integralPart ++ "." ++ fractionalPart)))
         boolP = do
-          v <- lexemeP (string "true" <|> string "false")
+          v <- lexemeP (try (string "true") <|> try (string "false"))
           return (case v of
             "true" -> Boolean True
             "false" -> Boolean False)
 
 dataTypeP :: Parser DataType
 dataTypeP = do
-          v <- lexemeP (string "Integer" <|> string "Boolean")
+          v <- lexemeP (try (string "Integer") <|> try (string "Real") <|> try (string "Boolean"))
           return (case v of
             "Integer" -> DTInteger
+            "Real" -> DTReal
             "Boolean" -> DTBoolean)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse4.html#x15-140001.4
