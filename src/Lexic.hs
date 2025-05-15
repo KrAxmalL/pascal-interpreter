@@ -30,8 +30,9 @@ data Statement = Assignment {aName :: Identifier, aValue :: Expression } |
                  ProcCall {pcName :: Identifier, pcParams :: [Expression]} |
                  Compound [Statement] |
                  If { iCondition :: Expression, iIfRoute :: Statement, iElseRoute :: Maybe Statement } |
-                 While { wCondition :: Expression, wBody :: Statement } deriving (Show)
-
+                 While { wCondition :: Expression, wBody :: Statement } |
+                 Repeat { rCondition :: Expression, rBody :: [Statement] }
+                 deriving (Show)
 
 -- https://www.freepascal.org/docs-html/current/ref/refch12.html#x142-16600012
 data Expression = Val Value |
@@ -85,5 +86,3 @@ printValue (IntNum v) = show v
 
 -- TODO: 
 -- 1. Consider supporting String and Char data types
--- 2. Consider adding more control flow statements (repeat..., for...)
--- 3. Add readln function support

@@ -221,6 +221,18 @@ interpretStatement ioi sttm = do
                         case res' of
                             Left er -> pure (Left er)
                             Right i'' -> interpretStatement (pure (Right i'')) whileSttm
+        (Right i, repeatSttm@(Repeat {rCondition, rBody})) -> do
+            res <- foldl interpretStatement (pure (Right i)) rBody
+            case res of
+                Left er -> pure (Left er)
+                Right i' -> do 
+                    res' <- interpretExpression i' rCondition
+                    case res' of
+                        Left er -> pure (Left er)
+                        Right (i'', v) -> case expectBooleanType v of
+                            Left er -> pure (Left er)
+                            Right (Boolean False) -> pure (Right i'')
+                            Right (Boolean True) -> interpretStatement (pure (Right i'')) repeatSttm
 
 interpretReadProcedure :: Interpreter -> [Expression] -> IO (Either InterpretationError Interpreter)
 interpretReadProcedure i [] = pure (Right i)

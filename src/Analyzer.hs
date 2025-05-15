@@ -22,6 +22,7 @@ data AnalysisErrorType = IdentifierAlreadyDefinedError |
                      ProcedureCallError |
                      IfStatementError |
                      WhileStatementError |
+                     RepeatStatementError |
                      VariableReferenceError |
                      FunctionCallError |
                      UnaryOperatorError |
@@ -285,7 +286,7 @@ analyzeStatement ea@(Right a) Assignment {aName, aValue} = case getVar (currentS
     Left er -> Left (AnalysisError AssignmentError "Error during assignment statement!" (Just er))
     Right vi -> case analyzeExpression ea aValue of
         Left er -> Left (AnalysisError AssignmentError "Wrong expression in assignment statement!" (Just er))
-        Right ti -> case expectType aValue (viType vi) ti of
+        Right dt -> case expectType aValue (viType vi) dt of
             Left er -> Left (AnalysisError AssignmentError "Wrong expression type in assignment statement!" (Just er))
             Right _ -> Right a
 analyzeStatement (Right a) ProcCall {pcName, pcParams} = case getProc (currentScope a) procName of
@@ -304,7 +305,7 @@ analyzeStatement (Right a) ProcCall {pcName, pcParams} = case getProc (currentSc
 analyzeStatement a@(Right _) (Compound sttms) = foldl analyzeStatement a sttms
 analyzeStatement a@(Right _) If {iCondition, iIfRoute, iElseRoute} = case (analyzeExpression a iCondition) of
     Left er -> Left (AnalysisError IfStatementError "Error in conditional expression in 'if' statement!" (Just er))
-    Right ti -> case expectType iCondition DTBoolean ti of
+    Right dt -> case expectType iCondition DTBoolean dt of
         Left er -> Left (AnalysisError IfStatementError "Wrong conditional expression type in 'if' statement!" (Just er))
         Right _ -> case analyzeStatement a iIfRoute of
             Left er -> Left (AnalysisError IfStatementError "Error in 'if' statement!" (Just er))
@@ -315,11 +316,18 @@ analyzeStatement a@(Right _) If {iCondition, iIfRoute, iElseRoute} = case (analy
                     ea'@(Right _) -> ea'
 analyzeStatement a@(Right _) While {wCondition, wBody} = case (analyzeExpression a wCondition) of
     Left er -> Left (AnalysisError WhileStatementError "Error in conditional expression in 'while' statement! "  (Just er))
-    Right ti -> case expectType wCondition DTBoolean ti of
+    Right dt -> case expectType wCondition DTBoolean dt of
         Left er -> Left (AnalysisError WhileStatementError "Wrong conditional expression type in 'while' statement!"  (Just er))
         Right _ -> case analyzeStatement a wBody of
             Left er -> Left (AnalysisError WhileStatementError "Error in 'while' statement!"  (Just er))
             ea@(Right _) -> ea
+analyzeStatement a@(Right _) Repeat {rCondition, rBody} = case (foldl analyzeStatement a rBody) of
+    Left er -> Left (AnalysisError RepeatStatementError "Error in 'repeat' statement!"  (Just er))
+    ea@(Right _) -> case analyzeExpression ea rCondition of
+        Left er -> Left (AnalysisError RepeatStatementError "Error in conditional expression in 'repeat' statement! " (Just er))
+        Right dt -> case expectType rCondition DTBoolean dt of
+            Left er -> Left (AnalysisError RepeatStatementError "Wrong conditional expression type in 'repeat' statement!"  (Just er))
+            Right _ -> ea
 
 analyzeExpression :: Either AnalysisError Analyzer -> Expression -> Either AnalysisError DataType
 analyzeExpression a@(Left er) _ = Left er

@@ -91,13 +91,13 @@ integerP = do
       Just s -> if s == '-' then s:n else n -- "read" can't parse numbers like "+23"
       Nothing -> n))
 
-
 statementP :: Parser Statement
 statementP = do 
   iden <- lexemeP identifierP
   case idValue iden of
     "if" -> ifStatementP
     "while" -> whileStatementP
+    "repeat" -> repeatStatementP
     "begin" -> compoundStatementP
     _ -> assignmentOrProcCallP iden
     where 
@@ -120,6 +120,11 @@ statementP = do
         _ <- lexeme1P (string "do")
         sttm <- statementP
         return (While { wCondition = cond, wBody = sttm })
+      repeatStatementP = do
+        sttms <- statementListP
+        _ <- lexemeP (string "until")
+        cond <- expressionP
+        return (Repeat {rCondition = cond, rBody = sttms})
       assignmentOrProcCallP iden = do
         ch <- optionMaybe openParen
         case ch of
@@ -137,9 +142,12 @@ statementP = do
 
 compoundStatementP :: Parser Statement
 compoundStatementP = do
-  sttms <- endBy (try statementP) (lexemeP semicolonP)
+  sttms <- statementListP
   _ <- lexemeP (string "end")
   return (Compound sttms)
+
+statementListP :: Parser [Statement]
+statementListP = endBy (try statementP) (lexemeP semicolonP)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse81.html#x143-16700012.1
 expressionP :: Parser Expression

@@ -7,6 +7,7 @@ var e: Real;
 var x: Integer;
 var cond: Boolean;
 var t: Real;
+var k: Integer;
 
 function add(c: Integer; d: Integer): Integer;
 begin
@@ -40,4 +41,9 @@ begin
       begin
          x := x + 3;
       end;
+
+   k := 5;
+   repeat
+      k := k + 10;
+   until k < 3;
 end.
