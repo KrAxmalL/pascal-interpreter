@@ -3,6 +3,7 @@ module Parser (applyParser) where
 import Control.Monad
 import Text.Parsec.Prim (ParsecT, getParserState)
 import Text.ParserCombinators.Parsec
+import qualified Data.Char as Ch
 import Lexic
 
 -- TODO: add more reserved keywords
@@ -246,7 +247,7 @@ paramListP :: Parser [Expression]
 paramListP = sepBy expressionP (lexemeP (char ','))
 
 valueP :: Parser Value
-valueP = unsignedNumberP <|> boolP
+valueP = unsignedNumberP <|> boolP <|> stringP
   where unsignedNumberP = do
           integralPart <- numberP
           dot <- optionMaybe (char '.')
@@ -262,14 +263,29 @@ valueP = unsignedNumberP <|> boolP
           return (case v of
             "true" -> Boolean True
             "false" -> Boolean False)
+        stringP = do
+          fst <- singleQuoteP <|> hashP
+          str <- case fst of
+              '\'' -> do
+                chs <- many (try ((noneOf "'") <|> (char '\'' >> char '\'')))
+                _ <- lexemeP (char '\'')
+                return chs
+              '#' -> do
+                fst <- numberP
+                rest <- many (hashP >> numberP)
+                _ <- anySpacesP
+                return (map (toEnum . read) (fst:rest))
+          return (if length str == 1 then (Character (head str)) else (Str str))
 
 dataTypeP :: Parser DataType
 dataTypeP = do
-          v <- lexemeP (try (string "Integer") <|> try (string "Real") <|> try (string "Boolean"))
+          v <- lexemeP (try (string "Integer") <|> try (string "Real") <|> try (string "Boolean") <|> try (string "Char") <|> try (string "String"))
           return (case v of
             "Integer" -> DTInteger
             "Real" -> DTReal
-            "Boolean" -> DTBoolean)
+            "Boolean" -> DTBoolean
+            "Char" -> DTChar
+            "String" -> DTString)
 
 -- https://www.freepascal.org/docs-html/current/ref/refse4.html#x15-140001.4
 identifierP :: Parser Identifier
@@ -288,6 +304,12 @@ allowedIdentifierP = do
 
 numberP :: Parser String
 numberP = many1 digit
+
+hashP :: Parser Char
+hashP = char '#'
+
+singleQuoteP :: Parser Char
+singleQuoteP = char '\''
 
 colonP :: Parser Char
 colonP = char ':'

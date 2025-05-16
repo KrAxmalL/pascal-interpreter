@@ -70,19 +70,23 @@ data BinaryOp = Plus |
 data Identifier = Identifier {idValue :: String}
     deriving (Show)
 
-data DataType = DTInteger |
+data DataType = DTBoolean |
+                DTInteger |
                 DTReal |
-                DTBoolean
+                DTChar |
+                DTString
                 deriving (Show, Eq)
 
 data Value = Boolean Bool |
              IntNum Int |
-             RealNum Double
+             RealNum Double |
+             Character Char |
+             Str String
              deriving (Show)
 
 printValue :: Value -> String
 printValue (Boolean v) = show v
 printValue (IntNum v) = show v
-
--- TODO: 
--- 1. Consider supporting String and Char data types
+printValue (RealNum v) = show v
+printValue (Character v) = [v]
+printValue (Str v) = v

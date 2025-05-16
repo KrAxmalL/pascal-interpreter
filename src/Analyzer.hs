@@ -137,7 +137,11 @@ binaryOpDataTypeMap = Map.fromList [
             (DTInteger, DTInteger, DTInteger),
             (DTInteger, DTReal, DTReal),
             (DTReal, DTInteger, DTReal),
-            (DTReal, DTReal, DTReal)
+            (DTReal, DTReal, DTReal),
+            (DTChar, DTChar, DTString),
+            (DTChar, DTString, DTString),
+            (DTString, DTChar, DTString),
+            (DTString, DTString, DTString)
         ]),
         (Minus, [
             (DTInteger, DTInteger, DTInteger),
@@ -168,42 +172,54 @@ binaryOpDataTypeMap = Map.fromList [
             (DTInteger, DTReal, DTBoolean),
             (DTReal, DTInteger, DTBoolean),
             (DTReal, DTReal, DTBoolean),
-            (DTBoolean, DTBoolean, DTBoolean)
+            (DTBoolean, DTBoolean, DTBoolean),
+            (DTChar, DTChar, DTBoolean),
+            (DTString, DTString, DTBoolean)
             ]),
         (Neql, [
             (DTInteger, DTInteger, DTBoolean),
             (DTInteger, DTReal, DTBoolean),
             (DTReal, DTInteger, DTBoolean),
-             (DTReal, DTReal, DTBoolean),
-            (DTBoolean, DTBoolean, DTBoolean)
+            (DTReal, DTReal, DTBoolean),
+            (DTBoolean, DTBoolean, DTBoolean),
+            (DTChar, DTChar, DTBoolean),
+            (DTString, DTString, DTBoolean)
             ]),
         (Gt, [
             (DTInteger, DTInteger, DTBoolean),
             (DTInteger, DTReal, DTBoolean),
             (DTReal, DTInteger, DTBoolean),
             (DTReal, DTReal, DTBoolean),
-            (DTBoolean, DTBoolean, DTBoolean)
+            (DTBoolean, DTBoolean, DTBoolean),
+            (DTChar, DTChar, DTBoolean),
+            (DTString, DTString, DTBoolean)
             ]),
         (Gte, [
             (DTInteger, DTInteger, DTBoolean),
             (DTInteger, DTReal, DTBoolean),
             (DTReal, DTInteger, DTBoolean),
             (DTReal, DTReal, DTBoolean),
-            (DTBoolean, DTBoolean, DTBoolean)
+            (DTBoolean, DTBoolean, DTBoolean),
+            (DTChar, DTChar, DTBoolean),
+            (DTString, DTString, DTBoolean)
             ]),
         (Lt, [
             (DTInteger, DTInteger, DTBoolean),
             (DTInteger, DTReal, DTBoolean),
             (DTReal, DTInteger, DTBoolean),
             (DTReal, DTReal, DTBoolean),
-            (DTBoolean, DTBoolean, DTBoolean)
+            (DTBoolean, DTBoolean, DTBoolean),
+            (DTChar, DTChar, DTBoolean),
+            (DTString, DTString, DTBoolean)
             ]),
         (Lte, [
             (DTInteger, DTInteger, DTBoolean),
             (DTInteger, DTReal, DTBoolean),
             (DTReal, DTInteger, DTBoolean),
             (DTReal, DTReal, DTBoolean),
-            (DTBoolean, DTBoolean, DTBoolean)
+            (DTBoolean, DTBoolean, DTBoolean),
+            (DTChar, DTChar, DTBoolean),
+            (DTString, DTString, DTBoolean)
             ]),
         (And, [
             (DTBoolean, DTBoolean, DTBoolean)
@@ -286,7 +302,7 @@ analyzeStatement ea@(Right a) Assignment {aName, aValue} = case getVar (currentS
     Left er -> Left (AnalysisError AssignmentError "Error during assignment statement!" (Just er))
     Right vi -> case analyzeExpression ea aValue of
         Left er -> Left (AnalysisError AssignmentError "Wrong expression in assignment statement!" (Just er))
-        Right dt -> case expectType aValue (viType vi) dt of
+        Right dt -> case expectTypes aValue (getExpectedTypes (viType vi)) dt of
             Left er -> Left (AnalysisError AssignmentError "Wrong expression type in assignment statement!" (Just er))
             Right _ -> Right a
 analyzeStatement (Right a) ProcCall {pcName, pcParams} = case getProc (currentScope a) procName of
@@ -335,6 +351,8 @@ analyzeExpression a@(Right _) (Val val) = case val of
     IntNum _ -> Right DTInteger
     RealNum _ -> Right DTReal
     Boolean _ -> Right DTBoolean
+    Character _ -> Right DTChar
+    Str _ -> Right DTString
 analyzeExpression (Right a) (VarRef iden) = case getVar (currentScope a) (idValue iden) of
     Left er -> Left (AnalysisError VariableReferenceError ("Error when referencing variable '" ++ (idValue iden) ++ "'!") (Just er))
     Right vi -> Right (viType vi)
@@ -362,14 +380,6 @@ analyzeExpression a@(Right _) (BinOp {boOp, boLeft, boRight}) = case analyzeExpr
                 Just (_, _, resultDT) -> Right resultDT
 analyzeExpression a@(Right _) (Paren expr) = analyzeExpression a expr
 
-expectType :: Expression -> DataType -> DataType -> Either AnalysisError DataType
-expectType expr ex = expectTypes expr [ex]
-
-expectTypes :: Expression -> [DataType] -> DataType -> Either AnalysisError DataType
-expectTypes expr exl ac = if elem ac exl
-    then Right ac
-    else Left (AnalysisError TypeMismatchError ("Expression: " ++ (show expr) ++ " has wrong type! Expected one of these types: " ++ (show (map show exl)) ++ ". Actual type: " ++ (show ac)) Nothing)
-
 analyzeActualParams :: Analyzer -> [ParamInfo] -> [Expression] -> Either AnalysisError Analyzer
 analyzeActualParams a fps aps = if fpsl /= apsl
     then Left (AnalysisError ActualParameterError ("Amounts of formal and actual parameters are different! FP amount: " ++ (show fpsl) ++ ", AP amount: " ++ (show apsl)) Nothing)
@@ -380,9 +390,9 @@ analyzeActualParams a fps aps = if fpsl /= apsl
             (Left er, _) -> Left er
             (a''@(Right _), (fp, ap, index)) -> case analyzeExpression a'' ap of
                 Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                Right dt -> if (dt == paiType fp)
-                    then a''
-                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: " ++ (show (paiType fp)) ++ ". Actual: " ++ (show dt)) Nothing)
+                Right dt -> case expectTypes ap (getExpectedTypes (paiType fp)) dt of
+                    Left er -> Left (AnalysisError ActualParameterError ("Error for actual parameter at position " ++ (show index) ++ "!") (Just er))
+                    Right _ -> a''
 
 analyzeWriteParams :: Analyzer -> [Expression] -> Either AnalysisError Analyzer
 analyzeWriteParams a aps = foldl analyzeParamType (Right a) (zip aps [0..])
@@ -390,10 +400,10 @@ analyzeWriteParams a aps = foldl analyzeParamType (Right a) (zip aps [0..])
             (Left er, _) -> Left er
             (a''@(Right _), (ap, index)) -> case analyzeExpression a'' ap of
                 Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                Right dt -> if (elem dt allowedParameterTypes)
-                    then a''
-                    else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show allowedParameterTypes) ++ ". Actual: " ++ (show dt)) Nothing)
-          allowedParameterTypes = [DTInteger, DTReal, DTBoolean]
+                Right dt -> case expectTypes ap allowedParameterTypes dt of
+                    Left er -> Left (AnalysisError ActualParameterError ("Error for actual parameter at position " ++ (show index) ++ "!") (Just er))
+                    Right _ -> a''
+          allowedParameterTypes = [DTBoolean, DTChar, DTString, DTInteger, DTReal]
 
 analyzeReadParams :: Analyzer -> [Expression] -> Either AnalysisError Analyzer
 analyzeReadParams a aps = foldl analyzeParam (Right a) (zip aps [0..])
@@ -402,11 +412,23 @@ analyzeReadParams a aps = foldl analyzeParam (Right a) (zip aps [0..])
             (a''@(Right _), (ap@(VarRef _), index)) ->
                 case analyzeExpression a'' ap of
                     Left er -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "!") (Just er))
-                    Right dt -> if (elem dt allowedParameterTypes)
-                        then a''
-                        else Left (AnalysisError ActualParameterError ("Actual parameter at position " ++ (show index) ++ " has wrong type! Expected: one of " ++ (show allowedParameterTypes) ++ ". Actual: " ++ (show dt)) Nothing)
+                    Right dt -> case expectTypes ap allowedParameterTypes dt of
+                        Left er -> Left (AnalysisError ActualParameterError ("Error for actual parameter at position " ++ (show index) ++ "!") (Just er))
+                        Right _ -> a''
             (a''@(Right _), (_, index)) -> Left (AnalysisError ActualParameterError ("Wrong expression for actual parameter at position " ++ (show index) ++ "! Only variable references are allowed as a parameters!") Nothing)
-           allowedParameterTypes = [DTInteger, DTReal]
+           allowedParameterTypes = [DTChar, DTString, DTInteger, DTReal]
+
+expectType :: Expression -> DataType -> DataType -> Either AnalysisError DataType
+expectType expr ex = expectTypes expr [ex]
+
+expectTypes :: Expression -> [DataType] -> DataType -> Either AnalysisError DataType
+expectTypes expr exl ac = if elem ac exl
+    then Right ac
+    else Left (AnalysisError TypeMismatchError ("Expression: " ++ (show expr) ++ " has wrong type! Expected one of these types: " ++ (show (map show exl)) ++ ". Actual type: " ++ (show ac)) Nothing)
+
+getExpectedTypes :: DataType -> [DataType]
+getExpectedTypes DTString = [DTString, DTChar]
+getExpectedTypes dt = [dt]
 
 testVarDecl :: Declaration
 testVarDecl = VarDecl

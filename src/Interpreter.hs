@@ -167,7 +167,11 @@ interpretStatement ioi sttm = do
             res <- interpretExpression i aValue
             return (case res of
                 Left er -> Left er
-                Right (i', v) -> Right (i' {callStack = updateVarInCallStack (idValue aName) v (callStack i')}))
+                Right (i', v) -> 
+                    let varName = idValue aName
+                        vi = findVarInCallStack varName (callStack i')
+                        finalValue = charAsString (viType vi) v
+                    in Right (i' {callStack = updateVarInCallStack varName finalValue (callStack i')}))
         (Right i, ProcCall {pcName, pcParams}) -> do
             res <- interpretParams i pcParams
             case res of
@@ -175,10 +179,10 @@ interpretStatement ioi sttm = do
                 Right (i', parameterValues) -> 
                     case (idValue pcName) of
                          "write" -> do
-                                      putStr (foldl (++) "" (map printValue parameterValues))
+                                      putStr (foldl (++) "" (map printValue (reverse parameterValues)))
                                       return (Right (i'))
                          "writeln" -> do
-                                      putStrLn (foldl (++) "" (map printValue parameterValues))
+                                      putStrLn (foldl (++) "" (map printValue (reverse parameterValues)))
                                       return (Right (i'))
                          "read" -> interpretReadProcedure i' pcParams
                          "readln" -> interpretReadProcedure i' pcParams
@@ -236,30 +240,48 @@ interpretStatement ioi sttm = do
 
 interpretReadProcedure :: Interpreter -> [Expression] -> IO (Either InterpretationError Interpreter)
 interpretReadProcedure i [] = pure (Right i)
-interpretReadProcedure i params = do
-        line <- getLine
-        let inputValues = words line
-            interpreterWithParams = foldl interpretParam (Right i) (zip params inputValues)
-         in if (length params) <= (length inputValues)
-            then return (interpreterWithParams)
-            else case interpreterWithParams of
-                Left er -> return (Left er)
-                Right i' -> interpretReadProcedure i' (snd (splitAt (length inputValues) params))
-    where interpretParam i (p, inp) = case i of
-            Left er -> Left er
-            Right i' -> case p of
-                VarRef varName -> 
-                    let varInfo = findVarInCallStack (idValue varName) (callStack i')
-                        varType = viType varInfo
-                    in case varType of
-                        DTInteger -> case readEither inp of
-                            Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show inp) Nothing)
-                            Right val -> Right (i' {callStack = updateVarInCallStack (idValue varName) (IntNum val) (callStack i')})
-                        DTReal -> case readEither inp of
-                            Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Real' from the input: " ++ show inp) Nothing)
-                            Right val -> Right (i' {callStack = updateVarInCallStack (idValue varName) (RealNum val) (callStack i')})
-                        _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Parameter has wrong type! Expected: one of " ++ (show [DTInteger, DTReal]) ++ ". Got: " ++ show varType) Nothing)
-                _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Parameters for 'read' and 'readln' procedures must be variable references!") Nothing)
+interpretReadProcedure i params = foldl interpretParam (pure (Right i)) params
+    where interpretParam interp p = do
+            i' <- interp
+            case i' of
+                Left er -> pure (Left er)
+                Right i' -> case p of
+                    VarRef varName -> 
+                        let varInfo = findVarInCallStack (idValue varName) (callStack i')
+                            varType = viType varInfo
+                        in case varType of
+                            DTChar -> do
+                                    ch <- getChar
+                                    return (Right (i' {callStack = updateVarInCallStack (idValue varName) (Character (ch)) (callStack i')}))
+                            DTString -> do
+                                str <- readUntil (\ch -> ch == '\n') ""
+                                return (Right (i' {callStack = updateVarInCallStack (idValue varName) (Str (str)) (callStack i')}))
+                            DTInteger -> do
+                                _ <- skipUntil (\ch -> ch == '\n' || ch == ' ' || ch == '\t')
+                                str <- readUntil (\ch -> ch == '\n' || ch == ' ' || ch == '\t') ""
+                                return (case readEither str of
+                                    Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show str) Nothing)
+                                    Right val -> Right (i' {callStack = updateVarInCallStack (idValue varName) (IntNum val) (callStack i')})
+                                    )
+                            DTReal -> do
+                               _ <- skipUntil (\ch -> ch == '\n' || ch == ' ' || ch == '\t')
+                               str <- readUntil (\ch -> ch == '\n' || ch == ' ' || ch == '\t') ""
+                               return (case readEither str of
+                                   Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show str) Nothing)
+                                   Right val -> Right (i' {callStack = updateVarInCallStack (idValue varName) (RealNum val) (callStack i')})
+                                   )
+                            _ -> pure (Left (InterpretationError WrongReadProcedureArgumentError ("Parameter has wrong type! Expected: one of " ++ (show [DTInteger, DTReal]) ++ ". Got: " ++ show varType) Nothing))
+                    _ -> pure (Left (InterpretationError WrongReadProcedureArgumentError ("Parameters for 'read' and 'readln' procedures must be variable references!") Nothing))
+          readUntil pred str = do
+                ch <- getChar
+                if pred ch
+                then (return str)
+                else readUntil pred (str ++ [ch])
+          skipUntil pred = do
+                ch <- getChar
+                if pred ch
+                then skipUntil pred
+                else return ()
 
 interpretExpression :: Interpreter -> Expression -> IO (Either InterpretationError (Interpreter, Value))
 interpretExpression i (Val v) = pure (Right (i, v))
@@ -319,6 +341,10 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 (IntNum lvv, RealNum rvv) -> Right (i'', RealNum ((fromIntegral lvv) + rvv))
                                 (RealNum lvv, IntNum rvv) -> Right (i'', RealNum (lvv + (fromIntegral rvv)))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', RealNum (lvv + rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Str ([lvv, rvv]))
+                                (Character lvv, Str rvv) -> Right (i'', Str (lvv : rvv))
+                                (Str lvv, Character rvv) -> Right (i'', Str (lvv ++ [rvv]))
+                                (Str lvv, Str rvv) -> Right (i'', Str (lvv ++ rvv))
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Minus -> case (lv, rv) of
                                 (IntNum lvv, IntNum rvv) -> Right (i'', IntNum (lvv - rvv))
@@ -358,6 +384,8 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Eql -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv == rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Boolean (lvv == rvv))
+                                (Str lvv, Str rvv) -> Right (i'', Boolean (lvv == rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv == rvv))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv == rvv))
                                 (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) == rvv))
@@ -365,6 +393,8 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Neql -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Boolean (lvv /= rvv))
+                                (Str lvv, Str rvv) -> Right (i'', Boolean (lvv /= rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv /= rvv))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv /= rvv))
                                 (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) /= rvv))
@@ -372,6 +402,8 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Gt -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv > rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Boolean (lvv > rvv))
+                                (Str lvv, Str rvv) -> Right (i'', Boolean (lvv > rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv > rvv))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv > rvv))
                                 (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) > rvv))
@@ -379,6 +411,8 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Gte -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv >= rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Boolean (lvv >= rvv))
+                                (Str lvv, Str rvv) -> Right (i'', Boolean (lvv >= rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv >= rvv))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv >= rvv))
                                 (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) >= rvv))
@@ -386,6 +420,8 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Lt -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv < rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Boolean (lvv < rvv))
+                                (Str lvv, Str rvv) -> Right (i'', Boolean (lvv < rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv < rvv))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv < rvv))
                                 (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) < rvv))
@@ -393,6 +429,8 @@ interpretExpression i (BinOp {boOp, boLeft, boRight}) = do
                                 _ -> Left (InterpretationError WrongTypeError ("Wrong value type in '" ++ (show boOp) ++ "' operator!") Nothing) 
                             Lte -> case (lv, rv) of
                                 (Boolean lvv, Boolean rvv) -> Right (i'', Boolean (lvv <= rvv))
+                                (Character lvv, Character rvv) -> Right (i'', Boolean (lvv <= rvv))
+                                (Str lvv, Str rvv) -> Right (i'', Boolean (lvv <= rvv))
                                 (IntNum lvv, IntNum rvv) -> Right (i'', Boolean (lvv <= rvv))
                                 (RealNum lvv, RealNum rvv) -> Right (i'', Boolean (lvv <= rvv))
                                 (IntNum lvv, RealNum rvv) -> Right (i'', Boolean ((fromIntegral lvv) <= rvv))
@@ -438,7 +476,7 @@ interpretParams i = foldl interpretParam (pure (Right (i, [])))
                         Right (i''', v) -> Right (i''', v : l))
 
 buildParameterMap :: [ParamInfo] -> [Value] -> Map String VarInfo
-buildParameterMap params values = foldl (\paramMap (paramInfo, paramValue) -> insert (paiName paramInfo) (VI {viName = paiName paramInfo, viType = paiType paramInfo, viValue = Just paramValue}) paramMap) empty (zip params values)
+buildParameterMap params values = foldl (\paramMap (paramInfo, paramValue) -> insert (paiName paramInfo) (VI {viName = paiName paramInfo, viType = paiType paramInfo, viValue = Just (charAsString (paiType paramInfo) paramValue)}) paramMap) empty (zip params values)
 
 expectBooleanType :: Value -> Either InterpretationError Value
 expectBooleanType = expectType DTBoolean
@@ -456,7 +494,14 @@ expectType t v = case t of
         _ -> typeError
     where typeError = Left (InterpretationError WrongTypeError ("Wrong value type! Expected type: '" ++ (show t) ++ "'!") Nothing)
 
+
+charAsString :: DataType -> Value -> Value
+charAsString DTString (Character ch) = Str [ch]
+charAsString _ v = v
+
 getDefaultValue :: DataType -> Value
 getDefaultValue DTInteger = IntNum 0
 getDefaultValue DTReal = RealNum 0.0
 getDefaultValue DTBoolean = Boolean False
+getDefaultValue DTChar = Character (toEnum 0);
+getDefaultValue DTString = Str "";

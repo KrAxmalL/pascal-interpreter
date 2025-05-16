@@ -8,6 +8,8 @@ var x: Integer;
 var cond: Boolean;
 var t: Real;
 var k: Integer;
+var m: Char;
+var s: String;
 
 function add(c: Integer; d: Integer): Integer;
 begin
@@ -46,4 +48,8 @@ begin
    repeat
       k := k + 10;
    until k < 3;
+
+   read(m,s);
+   writeln('s=', s);
+   writeln('m=', m);
 end.
