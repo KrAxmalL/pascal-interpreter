@@ -1,15 +1,29 @@
 program Fibonacci;
 
-function fibonacci(position: Integer): Integer;
+function calculateFibonacci(position: Integer): Integer;
 begin
-    if position = 0 then
-        fibonacci := 0
-    else if position < 3 then
-        fibonacci := 1
-    else
-        fibonacci := fibonacci(position - 1) + fibonacci(position - 2);
+if position < 0 then
+  calculateFibonacci := -1
+else if position = 0 then
+  calculateFibonacci := 0
+else if position < 3 then
+  calculateFibonacci := 1
+else
+  calculateFibonacci := calculateFibonacci(position - 1) +
+                        calculateFibonacci(position - 2);
 end;
 
+var index: Integer;
+var amount: Integer;
+
 begin
-    writeln(fibonacci(15));
+  write('Please, enter the required number of Fibonacci numbers to calculate: ');
+  read(amount);
+
+  index := 0;
+  while (index <= amount) do
+    begin
+      writeln('Fibonacci number at position ', index, ' - ', calculateFibonacci(index));
+      index := index + 1;
+    end;
 end.

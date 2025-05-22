@@ -39,11 +39,12 @@ runInterpreter filePath = do
                     putStrLn "Interpreting program..."
                     putStrLn "Program output:"
                     intrRes <- applyInterpreter pr
-                    putStrLn ("\n" ++ (take 40 $ repeat '-'))
-                    putStrLn "Final interpreter state:"
                     case intrRes of
                         Left er -> putStrLn (printInterpretationError er)
-                        Right i -> putStrLn (show i)
+                        Right i -> do
+                            putStrLn ("\n" ++ (take 40 $ repeat '-'))
+                            putStrLn "Final interpreter state:"
+                            putStrLn (show i)
     hClose handle
 
 tokenize :: String -> [String]
