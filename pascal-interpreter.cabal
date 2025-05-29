@@ -1,26 +1,21 @@
-cabal-version: 2.2
+cabal-version: 1.12
 
 -- This file has been generated from package.yaml by hpack version 0.37.0.
 --
 -- see: https://github.com/sol/hpack
 
 name:           pascal-interpreter
-version:        0.1.0.0
-description:    Please see the README on GitHub at <https://github.com/githubuser/pascal-interpreter#readme>
-homepage:       https://github.com/githubuser/pascal-interpreter#readme
-bug-reports:    https://github.com/githubuser/pascal-interpreter/issues
-author:         Author name here
-maintainer:     example@example.com
-copyright:      2025 Author name here
-license:        BSD-3-Clause
+version:        1.0.0
+description:    Please see the README on GitHub at <https://github.com/KrAxmalL/pascal-interpreter#readme>
+homepage:       https://github.com/KrAxmalL/pascal-interpreter#readme
+bug-reports:    https://github.com/KrAxmalL/pascal-interpreter/issues
 build-type:     Simple
 extra-source-files:
     README.md
-    CHANGELOG.md
 
 source-repository head
   type: git
-  location: https://github.com/githubuser/pascal-interpreter
+  location: https://github.com/KrAxmalL/pascal-interpreter
 
 library
   exposed-modules:
@@ -30,26 +25,26 @@ library
       Parser
   other-modules:
       Paths_pascal_interpreter
-  autogen-modules:
-      Paths_pascal_interpreter
   hs-source-dirs:
       src
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -XNamedFieldPuns
   build-depends:
       base >=4.7 && <5
+    , containers
+    , parsec
   default-language: Haskell2010
 
 executable pascal-interpreter-exe
   main-is: Main.hs
   other-modules:
       Paths_pascal_interpreter
-  autogen-modules:
-      Paths_pascal_interpreter
   hs-source-dirs:
       app
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -XNamedFieldPuns -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
+    , parsec
     , pascal-interpreter
   default-language: Haskell2010
 
@@ -58,12 +53,12 @@ test-suite pascal-interpreter-test
   main-is: Spec.hs
   other-modules:
       Paths_pascal_interpreter
-  autogen-modules:
-      Paths_pascal_interpreter
   hs-source-dirs:
       test
-  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -threaded -rtsopts -with-rtsopts=-N
+  ghc-options: -Wall -Wcompat -Widentities -Wincomplete-record-updates -Wincomplete-uni-patterns -Wmissing-export-lists -Wmissing-home-modules -Wpartial-fields -Wredundant-constraints -XNamedFieldPuns -threaded -rtsopts -with-rtsopts=-N
   build-depends:
       base >=4.7 && <5
+    , containers
+    , parsec
     , pascal-interpreter
   default-language: Haskell2010

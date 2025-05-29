@@ -1,7 +1,5 @@
 module Lexic where
 
-import Text.Parsec (SourcePos)
-
 data Program = Program {pHeader :: Identifier, pBody :: Block} deriving (Show)
 
 data Block = Block {bDeclarations :: [Declaration], bBody :: Statement} deriving (Show)

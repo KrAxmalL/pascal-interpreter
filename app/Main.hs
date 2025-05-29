@@ -1,51 +1,60 @@
 module Main (main) where
 
-import System.IO
-import Parser
 import Analyzer
 import Interpreter
-
-fileName :: String
-fileName = "./sources/program.pas"
+import Parser
+import System.Environment
+import System.IO
 
 main :: IO ()
 main = do
-    handle <- openFile fileName ReadMode
-    contents <- hGetContents handle
-    putStrLn (let tokens = tokenize contents
-                  str = map show tokens
-                  in foldl (++) "" str)
-    hClose handle
+  args <- getArgs
+  if (length args < 1)
+    then putStrLn "ERROR: Command was not provided"
+    else executeCommand (head args) (tail args)
 
-parseProgram :: IO ()
-parseProgram = runInterpreter fileName
+executeCommand :: String -> [String] -> IO ()
+executeCommand "run" args = executeRunCommand args
+executeCommand cmd _ = putStrLn ("ERROR: Unknown command '" ++ cmd ++ "'")
 
-runInterpreter :: String -> IO ()
-runInterpreter filePath = do
-    handle <- openFile filePath ReadMode
-    contents <- hGetContents handle
-    putStrLn ("Parsing source file: '" ++ filePath ++ "'...")
-    case applyParser filePath contents of
-        Left er -> putStrLn (show er)
-        Right pr -> do
-            putStrLn (show pr)
-            putStrLn (take 40 $ repeat '-')
-            putStrLn "Analyzing parsed program..."
-            case applyAnalyzer pr of
-                Left er -> putStrLn (printAnalysisError er)
-                Right a -> do
-                    putStrLn (show a)
-                    putStrLn (take 40 $ repeat '-')
-                    putStrLn "Interpreting program..."
-                    putStrLn "Program output:"
-                    intrRes <- applyInterpreter pr
-                    case intrRes of
-                        Left er -> putStrLn (printInterpretationError er)
-                        Right i -> do
-                            putStrLn ("\n" ++ (take 40 $ repeat '-'))
-                            putStrLn "Final interpreter state:"
-                            putStrLn (show i)
-    hClose handle
+executeRunCommand :: [String] -> IO ()
+executeRunCommand args =
+  if (length args < 1)
+    then putStrLn "ERROR: expecting file path to run the program"
+    else
+      let
+        filePath : flags = args
+        isDebug = (length flags > 0) && (head flags == "--debug")
+       in
+        runInterpreter filePath isDebug
 
-tokenize :: String -> [String]
-tokenize s = lines s >>= words
+runInterpreter :: String -> Bool -> IO ()
+runInterpreter filePath isDebug = do
+  handle <- openFile filePath ReadMode
+  contents <- hGetContents handle
+  putStrLn ("Interpreting source file: '" ++ filePath ++ "'...")
+  putStrLn ""
+  ifDebug (putStrLn "Parsing program...")
+  case applyParser filePath contents of
+    Left er -> putStrLn (show er)
+    Right pr -> do
+      ifDebug (putStrLn (show pr))
+      ifDebug (putStrLn (take 40 $ repeat '-'))
+      ifDebug (putStrLn "Analyzing parsed program...")
+      case applyAnalyzer pr of
+        Left er -> putStrLn (printAnalysisError er)
+        Right a -> do
+          ifDebug (putStrLn (show a))
+          ifDebug (putStrLn (take 40 $ repeat '-'))
+          ifDebug (putStrLn "Interpreting program...")
+          ifDebug (putStrLn "Program output:")
+          intrRes <- applyInterpreter pr
+          case intrRes of
+            Left er -> putStrLn (printInterpretationError er)
+            Right i -> do
+              ifDebug (putStrLn ("\n" ++ (take 40 $ repeat '-')))
+              ifDebug (putStrLn "Final interpreter state:")
+              ifDebug (putStrLn (show i))
+  hClose handle
+ where
+  ifDebug fn = if isDebug then fn else pure ()

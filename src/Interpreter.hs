@@ -5,6 +5,7 @@ import Data.Maybe
 import Lexic
 import Text.Printf (printf)
 import Text.Read (readEither)
+import System.IO
 
 data InterpretationError = InterpretationError InterpretationErrorType String (Maybe InterpretationError) deriving (Show)
 data InterpretationErrorType
@@ -211,9 +212,11 @@ interpretStatement ioi sttm = do
           case (idValue pcName) of
             "write" -> do
               putStr (foldl (++) "" (map printValue (reverse parameterValues)))
+              hFlush stdout
               return (Right (i'))
             "writeln" -> do
               putStrLn (foldl (++) "" (map printValue (reverse parameterValues)))
+              hFlush stdout
               return (Right (i'))
             "read" -> interpretReadProcedure i' pcParams
             "readln" -> interpretReadProcedure i' pcParams
@@ -300,7 +303,7 @@ interpretReadProcedure i params = foldl interpretParam (pure (Right i)) params
                 str <- readUntil (\ch -> ch == '\n' || ch == ' ' || ch == '\t') ""
                 return
                   ( case readEither (fst:str) of
-                      Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show str) Nothing)
+                      Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show (fst:str)) Nothing)
                       Right val -> Right (i'{callStack = updateVarInCallStack (idValue varName) (IntNum val) (callStack i')})
                   )
               DTReal -> do
@@ -308,7 +311,7 @@ interpretReadProcedure i params = foldl interpretParam (pure (Right i)) params
                 str <- readUntil (\ch -> ch == '\n' || ch == ' ' || ch == '\t') ""
                 return
                   ( case readEither (fst:str) of
-                      Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show str) Nothing)
+                      Left _ -> Left (InterpretationError WrongReadProcedureArgumentError ("Wrong input! Can't read value of type 'Integer' from the input: " ++ show (fst:str)) Nothing)
                       Right val -> Right (i'{callStack = updateVarInCallStack (idValue varName) (RealNum val) (callStack i')})
                   )
               _ -> pure (Left (InterpretationError WrongReadProcedureArgumentError ("Parameter has wrong type! Expected: one of " ++ (show [DTInteger, DTReal]) ++ ". Got: " ++ show varType) Nothing))
