@@ -211,11 +211,11 @@ interpretStatement ioi sttm = do
         Right (i', parameterValues) ->
           case (idValue pcName) of
             "write" -> do
-              putStr (foldl (++) "" (map printValue (reverse parameterValues)))
+              putStr (foldl (++) "" (map printValue parameterValues))
               hFlush stdout
               return (Right (i'))
             "writeln" -> do
-              putStrLn (foldl (++) "" (map printValue (reverse parameterValues)))
+              putStrLn (foldl (++) "" (map printValue parameterValues))
               hFlush stdout
               return (Right (i'))
             "read" -> interpretReadProcedure i' pcParams
@@ -541,7 +541,7 @@ interpretParams i = foldl interpretParam (pure (Right (i, [])))
         return
           ( case i''' of
               Left er -> Left er
-              Right (i''', v) -> Right (i''', v : l)
+              Right (i''', v) -> Right (i''', l ++ [v])
           )
 
 buildParameterMap :: [ParamInfo] -> [Value] -> Map String VarInfo
