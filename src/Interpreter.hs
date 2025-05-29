@@ -568,6 +568,13 @@ charAsString :: DataType -> Value -> Value
 charAsString DTString (Character ch) = Str [ch]
 charAsString _ v = v
 
+printValue :: Value -> String
+printValue (Boolean v) = show v
+printValue (IntNum v) = show v
+printValue (RealNum v) = show v
+printValue (Character v) = [v]
+printValue (Str v) = v
+
 getDefaultValue :: DataType -> Value
 getDefaultValue DTInteger = IntNum 0
 getDefaultValue DTReal = RealNum 0.0

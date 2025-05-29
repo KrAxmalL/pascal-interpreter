@@ -74,10 +74,3 @@ data Value
   | Character Char
   | Str String
   deriving (Show)
-
-printValue :: Value -> String
-printValue (Boolean v) = show v
-printValue (IntNum v) = show v
-printValue (RealNum v) = show v
-printValue (Character v) = [v]
-printValue (Str v) = v
