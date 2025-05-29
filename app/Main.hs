@@ -42,7 +42,7 @@ runInterpreter filePath isDebug = do
       ifDebug (putStrLn (take 40 $ repeat '-'))
       ifDebug (putStrLn "Analyzing parsed program...")
       case applyAnalyzer pr of
-        Left er -> putStrLn (printAnalysisError er)
+        Left er -> putStrLn (show er)
         Right a -> do
           ifDebug (putStrLn (show a))
           ifDebug (putStrLn (take 40 $ repeat '-'))
@@ -50,7 +50,7 @@ runInterpreter filePath isDebug = do
           ifDebug (putStrLn "Program output:")
           intrRes <- applyInterpreter pr
           case intrRes of
-            Left er -> putStrLn (printInterpretationError er)
+            Left er -> putStrLn (show er)
             Right i -> do
               ifDebug (putStrLn ("\n" ++ (take 40 $ repeat '-')))
               ifDebug (putStrLn "Final interpreter state:")

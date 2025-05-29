@@ -1,4 +1,4 @@
-module Analyzer (applyAnalyzer, printAnalysisError) where
+module Analyzer (applyAnalyzer) where
 
 import Control.Applicative
 import Data.List
@@ -6,7 +6,7 @@ import qualified Data.Map.Strict as Map
 import Data.Maybe
 import Lexic
 
-data AnalysisError = AnalysisError AnalysisErrorType String (Maybe AnalysisError) deriving (Show)
+data AnalysisError = AnalysisError AnalysisErrorType String (Maybe AnalysisError)
 data AnalysisErrorType
   = IdentifierAlreadyDefinedError
   | VariableDoesNotExistError
@@ -29,13 +29,13 @@ data AnalysisErrorType
   | BinaryOperatorError
   deriving (Show)
 
-printAnalysisError :: AnalysisError -> String
-printAnalysisError (AnalysisError tp message source) = initialMessage ++ sourceMessage ++ "]"
- where
-  initialMessage = "AnalysisError-[type = " ++ (show tp) ++ ", message = " ++ message
-  sourceMessage = case source of
-    Nothing -> ""
-    Just se -> ", source = " ++ (printAnalysisError se)
+instance Show AnalysisError where
+  show (AnalysisError tp message source) = initialMessage ++ sourceMessage ++ "]"
+    where
+      initialMessage = "AnalysisError-[type = " ++ (show tp) ++ ", message = " ++ message
+      sourceMessage = case source of
+        Nothing -> ""
+        Just se -> ", source = " ++ (show se)
 
 data Analyzer = A
   { currentScope :: Scope,

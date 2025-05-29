@@ -1,4 +1,4 @@
-module Interpreter (applyInterpreter, printInterpretationError) where
+module Interpreter (applyInterpreter) where
 
 import Data.Map.Strict (Map, empty, insert, lookup)
 import Data.Maybe
@@ -7,20 +7,20 @@ import Text.Printf (printf)
 import Text.Read (readEither)
 import System.IO
 
-data InterpretationError = InterpretationError InterpretationErrorType String (Maybe InterpretationError) deriving (Show)
+data InterpretationError = InterpretationError InterpretationErrorType String (Maybe InterpretationError)
 data InterpretationErrorType
   = WrongTypeError
   | DivisionByZeroError
   | WrongReadProcedureArgumentError
   deriving (Show)
 
-printInterpretationError :: InterpretationError -> String
-printInterpretationError (InterpretationError tp message source) = initialMessage ++ sourceMessage ++ "]"
- where
-  initialMessage = "InterpretationError-[type = " ++ (show tp) ++ ", message = " ++ message
-  sourceMessage = case source of
-    Nothing -> ""
-    Just se -> ", source = " ++ (printInterpretationError se)
+instance Show InterpretationError where
+  show (InterpretationError tp message source) = initialMessage ++ sourceMessage ++ "]"
+    where
+      initialMessage = "InterpretationError-[type = " ++ (show tp) ++ ", message = " ++ message
+      sourceMessage = case source of
+        Nothing -> ""
+        Just se -> ", source = " ++ (show se)
 
 data Interpreter = I
   { callStack :: [ActivationRecord],
